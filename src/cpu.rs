@@ -93,7 +93,7 @@ mod tests {
     #[test]
     fn test_0xa9_lda_immediate_load_data() {
         let mut cpu = CPU::new();
-        cpu.load_at(0, vec![0xa9, 0x00, 0x00]);
+        cpu.load_at(0, &vec![0xa9, 0x00, 0x00]);
         cpu.pc = 0;
         cpu.run();
         assert!(cpu.p & 0b0000_0010 == 0b10);
