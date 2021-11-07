@@ -1,23 +1,39 @@
 use std::fmt;
 
-pub struct Memory<const S: usize> ([u8; S]);
+pub struct MemoryMap<const S: usize> ([u8; S]);
 
-impl<const S: usize> Default for Memory<S> {
-    fn default() -> Memory<S> {
-        Memory([0u8; S])
+impl<const S: usize> Default for MemoryMap<S> {
+    fn default() -> MemoryMap<S> {
+        MemoryMap([0u8; S])
     }
 }
 
-impl<const S: usize> Memory<S> {
-    pub fn get(&self, n: usize) -> u8 {
-        self.0[n]
+impl<const S: usize> MemoryMap<S> {
+
+    pub fn read_u8(&self, addr: u16) -> u8 {
+        let addr = addr as usize;
+        self.0[addr]
     }
     
-    pub fn set(&mut self, n: usize, val: u8) {
-        self.0[n] = val;
+    pub fn write_u8(&mut self, addr: u16, val: u8) {
+        let addr = addr as usize;
+        self.0[addr] = val;
     }
 
-    pub fn load_at(&mut self, addr: usize, data: &[u8]) {
+    pub fn read_u16(&self, addr: u16) -> u16 {
+        let lo = self.read_u8(addr);
+        let hi = self.read_u8(addr+1);
+        u16::from_le_bytes([lo, hi])
+    }
+
+    pub fn write_u16(&mut self, addr: u16, val: u16) {
+        let [lo, hi] = val.to_le_bytes();
+        self.write_u8(addr, lo);
+        self.write_u8(addr+1, hi);
+    }
+
+    pub fn load(&mut self, addr: u16, data: &[u8]) {
+        let addr = addr as usize;
         let end = addr + data.len();
         self.0[addr..end].copy_from_slice(data);
     }
@@ -53,7 +69,7 @@ fn fmt_hexdump_line(line_no: Option<u16>, data:  &[u8]) -> String {
     }
 }
 
-impl<const S: usize> fmt::Debug for Memory<S> {
+impl<const S: usize> fmt::Debug for MemoryMap<S> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         let header = fmt_hexdump_line(None, &(0x00..0x10).collect::<Vec<_>>());
         
@@ -75,21 +91,45 @@ impl<const S: usize> fmt::Debug for Memory<S> {
 mod tests {
     use super::*;
 
+    /// Deadbeef is a recognisable 32-bit value for testing 
+    const DEADBEEF: [u8; 4] = [0xDE, 0xAD, 0xBE, 0xEF];
+
     #[test]
-    fn test_memory() {
-        let mut mem = Memory::<4096>::default();
-        mem.set(10, 5u8);
-        assert_eq!(mem.get(10), 5u8);
-        assert_eq!(mem.get(100), 0u8);
+    fn test_memory_write_read() {
+        let mut mem = MemoryMap::<4096>::default();
+        mem.write_u8(10, 5u8);
+        assert_eq!(mem.read_u8(10), 5u8);
+        assert_eq!(mem.read_u8(100), 0u8);
     }
 
     #[test]
-    fn test_load_at() {
-        let mut mem = Memory::<0x100>::default();
-        let some_bytes = [0xDE, 0xAD, 0xBE, 0xEF];
+    fn test_memory_load() {
+        let mut mem = MemoryMap::<0x100>::default();
         let addr = 0x08;
-        let end = addr + some_bytes.len();
-        mem.load_at(addr, &some_bytes);
-        assert_eq!(&mem.0[addr..end], &some_bytes);
+        let end = addr + DEADBEEF.len();
+        mem.load(addr as u16, &DEADBEEF);
+        assert_eq!(&mem.0[addr..end], &DEADBEEF);
     }
+
+    #[test]
+    fn test_u16_le_write_read() {
+        let mut mem = MemoryMap::<0x100>::default();
+        mem.load(0x00, &DEADBEEF);
+        
+        // write 4096 at 0x10 in little endian
+        let addr = 0x10;
+        let val = 4096_u16;
+        let [lo, hi] = val.to_le_bytes();
+        mem.write_u16(addr, val);
+
+        // check simple read
+        assert_eq!(mem.read_u16(addr), val);
+        // check byte order
+        assert_eq!(mem.read_u8(addr), lo);
+        assert_eq!(mem.read_u8(addr+1), hi);
+
+        // read deadbeef as 16-bit words (should be flipped)
+        assert_eq!(mem.read_u16(0x00), 0xADDE);
+        assert_eq!(mem.read_u16(0x02), 0xEFBE);
+    }   
 }
