@@ -9,7 +9,7 @@ pub struct RegisterSet {
     pub x: u8,
     /// Index Register Y
     pub y: u8,
-    /// Processor Status
+    /// Processor Status Word \[ N V _ B D I Z C \]
     pub p: u8,
 }
 

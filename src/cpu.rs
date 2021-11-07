@@ -1,28 +1,17 @@
-mod op;
+mod ops;
 mod reg;
+mod addr;
 
 use crate::memory::MemoryMap;
 use crate::cpu::reg::RegisterSet;
-use crate::cpu::op::Opcode;
+use crate::cpu::ops::Opcode;
+use crate::cpu::addr::AddressMode;
 
 use std::ops::Range;
 
-#[derive(Debug)]
-pub enum AddressingMode {
-    Immediate,
-    ZeroPage,
-    ZeroPageX,
-    ZeroPageY,
-    Absolute,
-    AbsoluteX,
-    AbsoluteY,
-    IndirectX,
-    IndirectY,
-    None
-}
 
 /// The NES CPU - Ricoh 2A03 (Modified MOS 6502)
-/// #[derive(default)]
+#[derive(Default)]
 pub struct CPU {
     /// CPU Register Set
     reg: RegisterSet,
@@ -46,6 +35,130 @@ impl CPU {
     const STACK_ADDR_MAX: u16 = 0x01FF;
 
     const PRG_START_ADDR: u16 = 0xFFFC;
+
+    fn do_add(&mut self, opcode: &Opcode) {
+        todo!()
+    }
+
+    fn do_and(&mut self, opcode: &Opcode) {
+        todo!()
+    }
+
+    fn do_shift(&mut self, opcode: &Opcode) {
+        todo!()
+    }
+
+    fn do_bit_test(&mut self, opcode: &Opcode) {
+        todo!()
+    }
+
+    fn do_branch(&mut self, opcode: &Opcode) {
+        todo!()
+    }
+
+    fn do_break(&mut self, opcode: &Opcode) {
+        todo!()
+    }
+
+    fn do_compare(&mut self, opcode: &Opcode) {
+        todo!()
+    }
+
+    fn do_decrement(&mut self, opcode: &Opcode) {
+        todo!()
+    }
+
+    fn do_status_check(&mut self, opcode: &Opcode) {
+        todo!()
+    }
+    
+    fn do_bitwise_xor(&mut self, opcode: &Opcode) {
+        todo!()
+    }
+
+    fn do_increment(&mut self, opcode: &Opcode) {
+        todo!()
+    }
+
+    fn do_jump(&mut self, opcode: &Opcode) {
+        todo!()
+    }
+
+    fn do_load(&mut self, opcode: &Opcode) {
+        if opcode.code == 0xA9 {
+            let param = self.mem.read_u8(self.reg.pc);
+            self.reg.pc += 1;
+            self.reg.a = param;
+    
+            self.update_zero_and_negative_flags(self.reg.a)
+        } else {
+            todo!()
+        }
+    }
+
+    fn do_nop(&mut self, opcode: &Opcode) {
+        todo!()
+    }
+
+    fn do_bitwise_or(&mut self, opcode: &Opcode) {
+        todo!()
+    }
+
+    fn do_transfer(&mut self, opcode: &Opcode) {
+        if opcode.code == 0xAA {
+            self.reg.x = self.reg.a;
+            self.update_zero_and_negative_flags(self.reg.x);
+        } else {
+            todo!()
+        }
+    }
+
+    fn do_register_decrement(&mut self, opcode: &Opcode) {
+        todo!()
+    }
+
+    fn do_register_increment(&mut self, opcode: &Opcode) {
+        if opcode.code == 0xE8 {
+            // TODO: this sucks, look into Wrapping<u8>
+            self.reg.x = self.reg.x.wrapping_add(1);
+            
+        } else {
+            todo!()
+        }
+    }
+
+    fn do_rotate(&mut self, opcode: &Opcode) {
+        todo!()
+    }
+
+    fn do_return_from_interrupt(&mut self, opcode: &Opcode) {
+        todo!()
+    }
+
+    fn do_return_from_subroutine(&mut self, opcode: &Opcode) {
+        todo!()
+    }
+
+    fn do_subtract(&mut self, opcode: &Opcode) {
+        todo!()
+    }
+
+    fn do_store_accumulator(&mut self, opcode: &Opcode) {
+        todo!()
+    }
+
+    fn do_stack_transfer(&mut self, opcode: &Opcode) {
+        todo!()
+    }
+
+    fn do_stack_op(&mut self, opcode: &Opcode) {
+        todo!()
+    }
+
+    fn do_store_register(&mut self, opcode: &Opcode) {
+        todo!()
+    }
+
 }
 
 
@@ -56,71 +169,127 @@ impl CPU {
             mem: MemoryMap::default()
         }
     }
-
+    
     pub fn load(&mut self, addr: u16, data: &[u8]) {
         self.mem.load(addr, data);
     }
-
-    fn get_operand_address(&self, mode: &AddressingMode) -> u16 {
-        use AddressingMode::*;
+    
+    fn get_operand_address(&self, mode: &AddressMode) -> u16 {
+        use AddressMode::*;
         match mode {
+            Implicit => panic!("AddressMode Error: No operand for Implicit addressing."),
+            Accumulator => self.reg.a as u16, // may need to replace this
             Immediate => self.reg.pc,
             ZeroPage => self.mem.read_u8(self.reg.pc) as u16,
-            Absolute => self.mem.read_u16(self.reg.pc),
             ZeroPageX => {
                 self.mem
-                    .read_u8(self.reg.pc)
-                    .wrapping_add(self.reg.x) as u16
+                .read_u8(self.reg.pc)
+                .wrapping_add(self.reg.x) as u16
             },
             ZeroPageY => {
                 self.mem
-                    .read_u8(self.reg.pc)
-                    .wrapping_add(self.reg.y) as u16
+                .read_u8(self.reg.pc)
+                .wrapping_add(self.reg.y) as u16
             },
+            Relative => todo!(),
+            Absolute => self.mem.read_u16(self.reg.pc), // may also need to replace this
             AbsoluteX => {
                 self.mem
-                    .read_u16(self.reg.pc)
-                    .wrapping_add(self.reg.x as u16)
+                .read_u16(self.reg.pc)
+                .wrapping_add(self.reg.x as u16)
             }
             AbsoluteY => {
                 self.mem
-                    .read_u16(self.reg.pc)
-                    .wrapping_add(self.reg.y as u16)
+                .read_u16(self.reg.pc)
+                .wrapping_add(self.reg.y as u16)
             },
+            Indirect => {
+                let ptr = self.mem
+                .read_u16(self.reg.pc);
+                
+                self.mem
+                .read_u16(ptr)
+            }
             IndirectX => {
                 let ptr = self.mem
                     .read_u8(self.reg.pc)
                     .wrapping_add(self.reg.x);
 
-                u16::from_le_bytes([self.mem.read_u8(ptr as u16), self.mem.read_u8(ptr.wrapping_add(1) as u16)])
+                u16::from_le_bytes([
+                    self.mem.read_u8(ptr as u16),
+                    self.mem.read_u8(ptr.wrapping_add(1) as u16),
+                ])
             }
             IndirectY => {
                 let ptr = self.mem
                     .read_u8(self.reg.pc);
 
-                u16::from_le_bytes([self.mem.read_u8(ptr as u16), self.mem.read_u8(ptr.wrapping_add(1) as u16)])
+                u16::from_le_bytes([
+                    self.mem.read_u8(ptr as u16),
+                    self.mem.read_u8(ptr.wrapping_add(1) as u16),
+                ])
                     .wrapping_add(self.reg.y as u16)
             },
-            None => panic!("Addressing Mode Failure: AddressingMode::None"),
+            NoAddressing => panic!("AddressMode Error: NoAddressing is not implemented."),
         }
     }
 
     pub fn step(&mut self, code: u8) {
-        self.reg.pc += 1;
-        let opcode = op::CPU_OPCODES_MAP.get(&code).expect(&format!("ERROR: Opcode {:x} unimplemented", code));
+        use ops::Mnemonic::*;
 
-        match code {
-            // LDA
-            0xA9 | 0xA5 | 0xB5 | 0xAD | 0xBD | 0xB9 | 0xA1 | 0xB1 => self.lda(opcode),
-            // STA
-            0x85 | 0x95 | 0x8D | 0x9D | 0x99 | 0x81 | 0x91 => self.sta(opcode),
-            // TAX
-            0xAA => self.tax(opcode),
-            // INX
-            0xE8 => self.inx(opcode),
-            // CPY
-            0xC0 => self.cpy(opcode),
-            _ => todo!()
+        self.reg.pc += 1;
+        let &opcode = ops::CPU_OPCODES_MAP.get(&code).expect(&format!("ERROR: Opcode {:x} unimplemented", code));
+
+        match opcode.mnemonic {
+            // Add with carry
+            ADC => self.do_add(opcode),
+            // Bitwise AND with accumulator
+            AND => self.do_and(opcode),
+            // Arithmetic shift left
+            ASL => self.do_shift(opcode),
+            // Test bits
+            BIT => self.do_bit_test(opcode),
+            // Branch instructions
+            BPL | BMI | BVC | BVS | BCC | BCS | BNE | BEQ => self.do_branch(opcode),
+            BRK => self.do_break(opcode),
+            CMP | CPX | CPY => self.do_compare(opcode),
+            // Decrement memory
+            DEC => self.do_decrement(opcode),
+            // Bitwise exclusive OR
+            EOR => self.do_bitwise_xor(opcode),
+            // Flag (processor status) instructions
+            CLC | SEC | CLI | SEI | CLV | CLD | SED => self.do_status_check(opcode),
+            // Increment memory
+            INC => self.do_increment(opcode),
+            // Jump
+            JMP | JSR => self.do_jump(opcode),
+            // Load accumulator
+            LDA | LDX | LDY => self.do_load(opcode),
+            // Logical shift right
+            LSR => self.do_shift(opcode),
+            // No operation
+            NOP => self.do_nop(opcode),
+            // Bitwise OR with accumulator
+            ORA => self.do_bitwise_or(opcode),
+            // Register instructions
+            TAX | TXA | TAY | TYA => self.do_transfer(opcode),
+            DEX | DEY => self.do_register_decrement(opcode),
+            INX | INY => self.do_register_increment(opcode),
+            // Rotate
+            ROL | ROR => self.do_rotate(opcode),
+            // Return from interrupt
+            RTI => self.do_return_from_interrupt(opcode),
+            // Return from subroutine
+            RTS => self.do_return_from_subroutine(opcode),
+            // Subtract with carry
+            SBC => self.do_subtract(opcode),
+            // Store accumulator
+            STA => self.do_store_accumulator(opcode),
+            // Stack instructions
+            TXS | TSX => self.do_stack_transfer(opcode),
+            PHA | PLA | PHP | PLP => self.do_stack_op(opcode),
+            // Store X register
+            STX | STY => self.do_store_register(opcode),
         }
     }
 
@@ -128,7 +297,7 @@ impl CPU {
     pub fn run(&mut self) {
         loop {
             match self.mem.read_u8(self.reg.pc) {
-                op::BRK => return,
+                0x00 => return, // break (temporary manual check until we implement proper interrupts)
                 opcode => self.step(opcode),
             }
         }
@@ -142,9 +311,6 @@ impl CPU {
         self.update_zero_and_negative_flags(self.reg.a)
     }
 
-    fn sta(&mut self, code: &Opcode){
-        todo!();
-    }
 
     fn tax(&mut self, code: &Opcode) {
         self.reg.x = self.reg.a;
@@ -155,10 +321,6 @@ impl CPU {
     fn inx(&mut self, code: &Opcode) {
         // TODO: this sucks, look into Wrapping<u8>
         self.reg.x = self.reg.x.wrapping_add(1);
-    }
-
-    fn cpy(&mut self, code: &Opcode) {
-        todo!();
     }
 
     fn update_zero_and_negative_flags(&mut self, result: u8) {
@@ -175,9 +337,6 @@ impl CPU {
         }
     }
 
-    // fn reset_state(&mut self) {
-    //     self.reg = RegisterSet::default();
-    // }
     
     /// Reset register state and initialise program counter to value at 0xFFFC
     fn interrupt_reset(&mut self) {
@@ -191,15 +350,28 @@ impl CPU {
     }
 }
 
+
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use op::*;
+    use ops::*;
+    
+    #[test]
+    fn test_0xa9_lda_immidiate_load_data() {
+        let mut cpu = CPU::new();
+        cpu.load(0, &[0xA9, 0x05, 0x00]);
+        cpu.run();
+
+        assert_eq!(cpu.reg.a, 0x05);
+        assert!(cpu.reg.p & 0b0000_0010 == 0b00);
+        assert!(cpu.reg.p & 0b1000_0000 == 0);
+    }
 
     #[test]
-    fn test_0xa9_lda_immediate_load_data() {
+    fn test_0xa9_lda_zero_flag() {
         let mut cpu = CPU::new();
-        cpu.load(0, &[LDA, 0x00, BRK]);
+        cpu.load(0, &[0xA9, 0x00, 0x00]);
         cpu.run();
 
         assert!(cpu.reg.p & 0b0000_0010 == 0b10);
@@ -208,7 +380,7 @@ mod tests {
     #[test]
     fn test_0xaa_tax_move_a_to_x() {
         let mut cpu = CPU::new();
-        cpu.load(0, &[TAX, BRK]);
+        cpu.load(0, &[0xAA, 0x00]);
         cpu.reg.a = 10;
         cpu.run();
 
@@ -218,7 +390,7 @@ mod tests {
     #[test]
     fn test_load_transfer_increment() {
         let mut cpu = CPU::new();
-        cpu.load(0, &[LDA, 0xC0, TAX, INX, BRK]);
+        cpu.load(0, &[0xA9, 0xC0, 0xAA, 0xE8, 0x00]);
         cpu.run();
 
         assert_eq!(cpu.reg.x, 0xC1);
@@ -227,7 +399,7 @@ mod tests {
     #[test]
     fn test_inx_overflow() {
         let mut cpu = CPU::new();
-        cpu.load(0, &[INX, INX, BRK]);
+        cpu.load(0, &[0xE8, 0xE8, 0x00]);
         cpu.reg.x = 0xFF;
         cpu.run();
 
@@ -237,7 +409,7 @@ mod tests {
     #[test]
     fn test_program_load() {
         let mut cpu = CPU::new();
-        cpu.load_program(&[LDA, 0xC0, TAX, INX, BRK]);
+        cpu.load_program(&[0xA9, 0xC0, 0xAA, 0xE8, 0x00]);
         cpu.interrupt_reset();
         cpu.run();
 
