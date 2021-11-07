@@ -27,6 +27,14 @@ impl Default for RegisterSet {
 }
 
 impl RegisterSet {
+    const BITMASK_OVERFLOW: u8 = 0b0100_0000;
+
+    pub fn update_overflow(&mut self, overflow: bool) {
+        if overflow {
+            self.p |= Self::BITMASK_OVERFLOW;
+        }
+    }
+
     pub fn reset(&mut self) {
         *self = RegisterSet::default();
     }

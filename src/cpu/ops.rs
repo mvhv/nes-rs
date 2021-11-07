@@ -98,14 +98,14 @@ pub enum Mnemonic {
 pub struct Opcode {
     pub mnemonic: Mnemonic,
     pub code: u8,
-    pub bytes: u8,
+    pub bytes: u16,
     pub cycles: u8,
     pub page_fault_penalty: u8,
     pub mode: AddressMode,
 }
 
 impl Opcode {
-    pub fn new(mnemonic: Mnemonic, code: u8, bytes: u8, cycles: u8, page_fault_penalty: u8, mode: AddressMode) -> Self {
+    pub fn new(mnemonic: Mnemonic, code: u8, bytes: u16, cycles: u8, page_fault_penalty: u8, mode: AddressMode) -> Self {
         Opcode { mnemonic, code, bytes, cycles, page_fault_penalty, mode }
     }
 }

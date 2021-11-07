@@ -36,8 +36,30 @@ impl CPU {
 
     const PRG_START_ADDR: u16 = 0xFFFC;
 
+
+
     fn do_add(&mut self, opcode: &Opcode) {
-        todo!()
+        let addr = self.get_operand_address(&opcode.mode);
+        let operand = self.mem.read_u8(addr);
+
+        let (result, overflow) = self.reg.a.overflowing_add(operand);
+        
+        self.reg.a = result;
+        self.reg.update_overflow(overflow);
+
+        self.reg.pc += opcode.bytes - 1;
+    }
+
+    fn do_sub(&mut self, opcode: &Opcode) {
+        let addr = self.get_operand_address(&opcode.mode);
+        let operand = self.mem.read_u8(addr);
+
+        let (result, overflow) = self.reg.a.overflowing_add(operand);
+        
+        self.reg.a = result;
+        self.reg.update_overflow(overflow);
+
+        self.reg.pc += opcode.bytes - 1;
     }
 
     fn do_and(&mut self, opcode: &Opcode) {
@@ -87,10 +109,11 @@ impl CPU {
     fn do_load(&mut self, opcode: &Opcode) {
         if opcode.code == 0xA9 {
             let param = self.mem.read_u8(self.reg.pc);
-            self.reg.pc += 1;
+            self.reg.pc += opcode.bytes - 1;
             self.reg.a = param;
     
             self.update_zero_and_negative_flags(self.reg.a)
+
         } else {
             todo!()
         }
@@ -139,9 +162,9 @@ impl CPU {
         todo!()
     }
 
-    fn do_subtract(&mut self, opcode: &Opcode) {
-        todo!()
-    }
+    // fn do_subtract(&mut self, opcode: &Opcode) {
+    //     todo!()
+    // }
 
     fn do_store_accumulator(&mut self, opcode: &Opcode) {
         todo!()
@@ -282,7 +305,7 @@ impl CPU {
             // Return from subroutine
             RTS => self.do_return_from_subroutine(opcode),
             // Subtract with carry
-            SBC => self.do_subtract(opcode),
+            SBC => self.do_sub(opcode),
             // Store accumulator
             STA => self.do_store_accumulator(opcode),
             // Stack instructions
@@ -414,6 +437,38 @@ mod tests {
         cpu.run();
 
         assert_eq!(cpu.reg.x, 0xC1);
+    }
+
+    #[test]
+    fn test_add_no_carry() {
+        let mut cpu = CPU::new();
+        cpu.load_program(&[
+            0xA9, // load acc immediate
+            0x10, // 16
+            0x69, // add acc immediate
+            0x13, // 19
+            0x00,
+        ]);
+        cpu.interrupt_reset();
+        cpu.run();
+        // assert 16 + 19 = 35
+        assert_eq!(cpu.reg.a, 0x23);
+    }
+
+    #[test]
+    fn test_add_with_carry() {
+        let mut cpu = CPU::new();
+        cpu.load_program(&[
+            0xA9, // load acc immediate
+            0xFF, // 255
+            0x69, // add acc immediate
+            0x06, // 6
+            0x00,
+        ]);
+        cpu.interrupt_reset();
+        cpu.run();
+        // assert 255 + 6 = 301 mod 256 = 5
+        assert_eq!(cpu.reg.a, 0x05);
     }
 }
 
