@@ -1,5 +1,4 @@
-mod cpu;
-mod memory;
+use nes_rs::{cpu, memory};
 
 use memory::MemoryMap;
 

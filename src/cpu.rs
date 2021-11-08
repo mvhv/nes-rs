@@ -8,6 +8,7 @@ use crate::cpu::ops::Opcode;
 use crate::cpu::addr::AddressMode;
 
 use std::ops::Range;
+use std::result;
 
 
 /// The NES CPU - Ricoh 2A03 (Modified MOS 6502)
@@ -17,6 +18,18 @@ pub struct CPU {
     reg: RegisterSet,
     /// CPU Memory
     mem: MemoryMap<0xFFFF>,
+}
+
+fn is_negative(val:u8) -> bool {
+    (val >> 7) != 0
+}
+
+fn is_positive(val:u8) -> bool {
+    (val >> 7) == 0
+}
+
+fn sign_bit(val: u8) -> u8 {
+    val >> 7
 }
 
 #[allow(unused)]
@@ -36,34 +49,88 @@ impl CPU {
 
     const PRG_START_ADDR: u16 = 0xFFFC;
 
+    fn update_zero_negative_flags(&mut self) {
+        self.reg.set_negative(self.reg.a >= 0x80);
+        self.reg.set_zero(self.reg.a == 0x00);
+    }
 
+    // fn update_zero(&mut self) {
+    //     self.reg.a >= 0x00;
+    // }
+
+    fn get_operand_u8(&mut self, opcode: &Opcode) -> u8 {
+        self.mem
+            .read_u8(
+                self.get_operand_address(&opcode.mode)
+        )
+    }
+
+    fn increment_pc(&mut self, opcode: &Opcode) {
+        self.reg.pc += opcode.bytes - 1;
+    }
 
     fn do_add(&mut self, opcode: &Opcode) {
-        let addr = self.get_operand_address(&opcode.mode);
-        let operand = self.mem.read_u8(addr);
+        let operand = self.get_operand_u8(opcode);
+        let is_carry = self.reg.get_carry();
 
-        let (result, overflow) = self.reg.a.overflowing_add(operand);
-        
+        // hacky workaround until I can figure out an effecient way to check
+        // for twos compliment overflow
+        let operand_emu = operand as i8 as isize;
+        let acc_emu = self.reg.a as i8 as isize;
+        let result_emu = (operand_emu + acc_emu + is_carry as isize);
+        let overflow_emu = result_emu > 127 || result_emu < -128;
+
+        let (mut result, mut carry) = self.reg.a.overflowing_add(operand);
+        if is_carry {
+            let (carry_result, carry_carry) = result.overflowing_add(1);
+            result = carry_result; // result including carry
+            carry |= carry_carry; // carry set if either add overflows
+        }
+
         self.reg.a = result;
-        self.reg.update_overflow(overflow);
 
-        self.reg.pc += opcode.bytes - 1;
+        self.update_zero_negative_flags();
+        self.reg.set_carry(carry);
+        self.reg.set_overflow(overflow_emu);
+
+        self.increment_pc(opcode);
     }
 
     fn do_sub(&mut self, opcode: &Opcode) {
-        let addr = self.get_operand_address(&opcode.mode);
-        let operand = self.mem.read_u8(addr);
+        let operand = self.get_operand_u8(opcode);
+        let is_carry = self.reg.get_carry();
 
-        let (result, overflow) = self.reg.a.overflowing_add(operand);
-        
+        // hacky workaround until I can figure out an effecient way to check
+        // for twos compliment overflow
+        let operand_emu = operand as i8 as isize;
+        let acc_emu = self.reg.a as i8 as isize;
+        let result_emu = (operand_emu - acc_emu - is_carry as isize);
+        let overflow_emu = result_emu > 127 || result_emu < -128;
+
+        let (mut result, mut carry) = self.reg.a.overflowing_sub(operand);
+        if is_carry {
+            let (carry_result, carry_carry) = result.overflowing_sub(1);
+            result = carry_result; // result including carry
+            carry |= carry_carry; // carry set if either add overflows
+        }
+
         self.reg.a = result;
-        self.reg.update_overflow(overflow);
 
-        self.reg.pc += opcode.bytes - 1;
+        self.update_zero_negative_flags();
+        self.reg.set_carry(carry);
+        self.reg.set_overflow(overflow_emu);
+
+        self.increment_pc(opcode);
     }
 
     fn do_and(&mut self, opcode: &Opcode) {
-        todo!()
+        let operand = self.get_operand_u8(opcode);
+        
+        self.reg.a &= operand;
+
+        self.update_zero_negative_flags();
+
+        self.increment_pc(opcode);
     }
 
     fn do_shift(&mut self, opcode: &Opcode) {
@@ -90,8 +157,21 @@ impl CPU {
         todo!()
     }
 
-    fn do_status_check(&mut self, opcode: &Opcode) {
-        todo!()
+    fn do_flag(&mut self, opcode: &Opcode) {
+        use ops::Mnemonic::{CLC, SEC, CLI, SEI, CLV, CLD, SED};
+
+        match &opcode.mnemonic {
+            CLC => self.reg.set_carry(false),
+            SEC => self.reg.set_carry(true),
+            CLI => self.reg.set_interrupt(false),
+            SEI => self.reg.set_interrupt(true),
+            CLV => self.reg.set_overflow(false),
+            CLD => self.reg.set_decimal(false),
+            SED => self.reg.set_decimal(true),
+            x => panic!("{:?} is not a flag operation", x),
+        }
+        
+        self.increment_pc(opcode);
     }
     
     fn do_bitwise_xor(&mut self, opcode: &Opcode) {
@@ -281,12 +361,18 @@ impl CPU {
             // Bitwise exclusive OR
             EOR => self.do_bitwise_xor(opcode),
             // Flag (processor status) instructions
-            CLC | SEC | CLI | SEI | CLV | CLD | SED => self.do_status_check(opcode),
+            CLC => self.reg.set_carry(false),
+            SEC => self.reg.set_carry(true),
+            CLI => self.reg.set_interrupt(false),
+            SEI => self.reg.set_interrupt(true),
+            CLV => self.reg.set_overflow(false),
+            CLD => self.reg.set_decimal(false),
+            SED => self.reg.set_decimal(true),
             // Increment memory
             INC => self.do_increment(opcode),
             // Jump
             JMP | JSR => self.do_jump(opcode),
-            // Load accumulator
+            // Load register
             LDA | LDX | LDY => self.do_load(opcode),
             // Logical shift right
             LSR => self.do_shift(opcode),
@@ -381,7 +467,7 @@ mod tests {
     use ops::*;
     
     #[test]
-    fn test_0xa9_lda_immidiate_load_data() {
+    fn test_0xa9_lda_immediate_load_data() {
         let mut cpu = CPU::new();
         cpu.load(0, &[0xA9, 0x05, 0x00]);
         cpu.run();
@@ -439,36 +525,158 @@ mod tests {
         assert_eq!(cpu.reg.x, 0xC1);
     }
 
+    // #[test]
+    // fn test_add_no_carry() {
+    //     let mut cpu = CPU::new();
+    //     cpu.load_program(&[
+    //         0xA9, // load acc immediate
+    //         0x10, // 16
+    //         0x69, // add acc immediate
+    //         0x13, // 19
+    //         0x00,
+    //     ]);
+    //     cpu.interrupt_reset();
+    //     cpu.run();
+    //     // assert 16 + 19 = 35
+    //     assert_eq!(cpu.reg.a, 0x23);
+    // }
+
+    // #[test]
+    // fn test_add_with_carry() {
+    //     let mut cpu = CPU::new();
+    //     cpu.load_program(&[
+    //         0xA9, // load acc immediate
+    //         0xFF, // 255
+    //         0x69, // add acc immediate
+    //         0x06, // 6
+    //         0x00,
+    //     ]);
+    //     cpu.interrupt_reset();
+    //     cpu.run();
+    //     // assert 255 + 6 = 301 mod 256 = 5
+    //     assert_eq!(cpu.reg.a, 0x05);
+    // }
+
     #[test]
-    fn test_add_no_carry() {
+    fn test_set_carry() {
         let mut cpu = CPU::new();
+        //  1 + 1 = 2, returns C = 0
         cpu.load_program(&[
-            0xA9, // load acc immediate
-            0x10, // 16
-            0x69, // add acc immediate
-            0x13, // 19
-            0x00,
+            0xA9, 0x01,
+            0x69, 0x01,
+            0x00
         ]);
         cpu.interrupt_reset();
         cpu.run();
-        // assert 16 + 19 = 35
-        assert_eq!(cpu.reg.a, 0x23);
+        assert_eq!(cpu.reg.get_overflow(), false);
+
+        //  1 + -1 = 0, returns C = 1
+        cpu.load_program(&[
+            0xA9, 0x01,
+            0x69, 0xFF,
+            0x00
+        ]);
+        cpu.interrupt_reset();
+        cpu.run();
+        assert_eq!(cpu.reg.get_overflow(), true);
+
+        //  127 + 1 = 128, returns C = 0
+        cpu.load_program(&[
+            0xA9, 0x7F,
+            0x69, 0x01,
+            0x00
+        ]);
+        cpu.interrupt_reset();
+        cpu.run();
+        assert_eq!(cpu.reg.get_overflow(), false);
+        
+        //  128 + -1 = -129, returns C = 1
+        cpu.load_program(&[
+            0xA9, 0x80,
+            0x69, 0x01,
+            0x00
+        ]);
+        cpu.interrupt_reset();
+        cpu.run();
+        assert_eq!(cpu.reg.get_overflow(), true);
     }
 
     #[test]
-    fn test_add_with_carry() {
+    fn test_set_overflow() {
         let mut cpu = CPU::new();
+        //  1 + 1 = 2, returns V = 0
         cpu.load_program(&[
-            0xA9, // load acc immediate
-            0xFF, // 255
-            0x69, // add acc immediate
-            0x06, // 6
-            0x00,
+            0xA9, 0x01,
+            0x69, 0x01,
+            0x00
         ]);
         cpu.interrupt_reset();
         cpu.run();
-        // assert 255 + 6 = 301 mod 256 = 5
-        assert_eq!(cpu.reg.a, 0x05);
+        assert_eq!(cpu.reg.get_overflow(), false);
+
+        //  1 + -1 = 0, returns V = 0
+        cpu.load_program(&[
+            0xA9, 0x01,
+            0x69, 0xFF,
+            0x00
+        ]);
+        cpu.interrupt_reset();
+        cpu.run();
+        assert_eq!(cpu.reg.get_overflow(), false);
+
+        //  127 + 1 = 128, returns V = 1
+        cpu.load_program(&[
+            0xA9, 0x7F,
+            0x69, 0x01,
+            0x00
+        ]);
+        cpu.interrupt_reset();
+        cpu.run();
+        assert_eq!(cpu.reg.get_overflow(), true);
+
+        // -128 + -1 = -129, returns V = 1
+        cpu.load_program(&[
+            0xA9, 0x80,
+            0x69, 0xFF,
+            0x00
+        ]);
+        cpu.interrupt_reset();
+        cpu.run();
+        assert_eq!(cpu.reg.get_overflow(), true);
+
+        // 0 - 1 = -1, returns V = 0
+        cpu.load_program(&[
+            0xA9, 0x00,
+            0xE9, 0x01,
+            0x00
+        ]);
+        cpu.interrupt_reset();
+        cpu.run();
+        assert_eq!(cpu.reg.get_overflow(), false);
+        
+        // -128 - 1 = -129, returns V = 1
+        cpu.load_program(&[
+            0xA9, 0x80,
+            0xE9, 0x01,
+            0x00
+        ]);
+        cpu.interrupt_reset();
+        cpu.run();
+        assert_eq!(cpu.reg.get_overflow(), true);
+
+        // 127 - -1 = 128, returns V = 1
+        cpu.load_program(&[
+            0xA9, 0x7F,
+            0xE9, 0xFF,
+            0x00
+        ]);
+        cpu.interrupt_reset();
+        cpu.run();
+        assert_eq!(cpu.reg.get_overflow(), true);
+    }
+
+    fn test_use_carry() {
+        todo!();
     }
 }
 
