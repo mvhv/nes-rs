@@ -10,6 +10,8 @@ use crate::cpu::addr::AddressMode;
 use std::ops::Range;
 use std::result;
 
+use self::ops::Mnemonic;
+
 
 /// The NES CPU - Ricoh 2A03 (Modified MOS 6502)
 #[derive(Default)]
@@ -18,6 +20,21 @@ pub struct CPU {
     reg: RegisterSet,
     /// CPU Memory
     mem: MemoryMap<0xFFFF>,
+}
+
+fn twos_add_overflow_carry(value: u8, operand: u8) ->  (u8, bool, bool) {
+    let val_pos = is_positive(value);
+    let op_pos = is_positive(operand);
+
+    let (result, carry) = value.overflowing_add(operand);
+    let res_pos = is_positive(result);
+    let overflow = if res_pos {
+        !val_pos && !op_pos
+    } else {
+        val_pos && op_pos
+    };
+
+    (result, overflow, carry)
 }
 
 fn is_negative(val:u8) -> bool {
@@ -49,14 +66,15 @@ impl CPU {
 
     const PRG_START_ADDR: u16 = 0xFFFC;
 
-    fn update_zero_negative_flags(&mut self) {
+    fn update_zn_from_accumulator(&mut self) {
         self.reg.set_negative(self.reg.a >= 0x80);
         self.reg.set_zero(self.reg.a == 0x00);
     }
 
-    // fn update_zero(&mut self) {
-    //     self.reg.a >= 0x00;
-    // }
+    fn update_zn_from_value(&mut self, value: u8) {
+        self.reg.set_negative(value >= 0x80);
+        self.reg.set_zero(value == 0x00);
+    }
 
     fn get_operand_u8(&mut self, opcode: &Opcode) -> u8 {
         self.mem
@@ -69,56 +87,30 @@ impl CPU {
         self.reg.pc += opcode.bytes - 1;
     }
 
-    fn do_add(&mut self, opcode: &Opcode) {
-        let operand = self.get_operand_u8(opcode);
-        let is_carry = self.reg.get_carry();
+    fn do_base_add(&mut self, operand: u8, carry: u8) {
+        let (partial_result, partial_overflow, partial_carry) = twos_add_overflow_carry(self.reg.a, operand);
+        let (carried_result, carried_overflow, carried_carry) = twos_add_overflow_carry(partial_result, carry);
 
-        // hacky workaround until I can figure out an effecient way to check
-        // for twos compliment overflow
-        let operand_emu = operand as i8 as isize;
-        let acc_emu = self.reg.a as i8 as isize;
-        let result_emu = (operand_emu + acc_emu + is_carry as isize);
-        let overflow_emu = result_emu > 127 || result_emu < -128;
+        self.reg.a = carried_result;
 
-        let (mut result, mut carry) = self.reg.a.overflowing_add(operand);
-        if is_carry {
-            let (carry_result, carry_carry) = result.overflowing_add(1);
-            result = carry_result; // result including carry
-            carry |= carry_carry; // carry set if either add overflows
-        }
-
-        self.reg.a = result;
-
-        self.update_zero_negative_flags();
-        self.reg.set_carry(carry);
-        self.reg.set_overflow(overflow_emu);
-
-        self.increment_pc(opcode);
+        self.update_zn_from_accumulator();
+        self.reg.set_carry(partial_carry || carried_carry);
+        self.reg.set_overflow(partial_overflow || carried_overflow);
     }
 
-    fn do_sub(&mut self, opcode: &Opcode) {
+    fn do_add_sub(&mut self, opcode: &Opcode) {
         let operand = self.get_operand_u8(opcode);
-        let is_carry = self.reg.get_carry();
+        let carry_multiplier = self.reg.get_carry() as u8;
 
-        // hacky workaround until I can figure out an effecient way to check
-        // for twos compliment overflow
-        let operand_emu = operand as i8 as isize;
-        let acc_emu = self.reg.a as i8 as isize;
-        let result_emu = (operand_emu - acc_emu - is_carry as isize);
-        let overflow_emu = result_emu > 127 || result_emu < -128;
-
-        let (mut result, mut carry) = self.reg.a.overflowing_sub(operand);
-        if is_carry {
-            let (carry_result, carry_carry) = result.overflowing_sub(1);
-            result = carry_result; // result including carry
-            carry |= carry_carry; // carry set if either add overflows
+        if self.reg.get_decimal() {
+            panic!("ERROR: Decimal mode is not avaliable on the 6502");
+        } else {
+            match &opcode.mnemonic {
+                Mnemonic::ADC => self.do_base_add(operand, 0x01 * carry_multiplier),
+                Mnemonic::SBC => self.do_base_add(!operand + 1, 0xFF * carry_multiplier),
+                x => panic!("ERROR: Addition not a valid instruction for: {:?}", x)
+            }
         }
-
-        self.reg.a = result;
-
-        self.update_zero_negative_flags();
-        self.reg.set_carry(carry);
-        self.reg.set_overflow(overflow_emu);
 
         self.increment_pc(opcode);
     }
@@ -128,13 +120,32 @@ impl CPU {
         
         self.reg.a &= operand;
 
-        self.update_zero_negative_flags();
+        self.update_zn_from_accumulator();
 
         self.increment_pc(opcode);
     }
 
-    fn do_shift(&mut self, opcode: &Opcode) {
-        todo!()
+    fn do_left_shift(&mut self, opcode: &Opcode) {
+        
+        match &opcode.mode {
+            AddressMode::Accumulator =>{
+                self.reg.set_carry(is_positive(self.reg.a));
+                self.reg.a <<= 1;
+                self.update_zn_from_accumulator();
+            },
+            mode => {
+                let addr = self.get_operand_address(mode);
+                let operand = self.mem.read_u8(addr);
+                self.reg.set_carry(is_positive(operand));
+                let result = operand << 1;
+                self.mem.write_u8(addr, result);
+                self.update_zn_from_value(result);
+            },
+        }
+        
+        self.increment_pc(opcode);
+
+        
     }
 
     fn do_bit_test(&mut self, opcode: &Opcode) {
@@ -262,6 +273,10 @@ impl CPU {
         todo!()
     }
 
+    fn do_shift(&self, opcode: &Opcode) {
+        todo!()
+    }
+
 }
 
 
@@ -344,12 +359,12 @@ impl CPU {
         let &opcode = ops::CPU_OPCODES_MAP.get(&code).expect(&format!("ERROR: Opcode {:x} unimplemented", code));
 
         match opcode.mnemonic {
-            // Add with carry
-            ADC => self.do_add(opcode),
+            // Add or Subtract
+            ADC | SBC => self.do_add_sub(opcode),
             // Bitwise AND with accumulator
             AND => self.do_and(opcode),
             // Arithmetic shift left
-            ASL => self.do_shift(opcode),
+            ASL => self.do_left_shift(opcode),
             // Test bits
             BIT => self.do_bit_test(opcode),
             // Branch instructions
@@ -391,7 +406,7 @@ impl CPU {
             // Return from subroutine
             RTS => self.do_return_from_subroutine(opcode),
             // Subtract with carry
-            SBC => self.do_sub(opcode),
+            SBC => self.do_add_sub(opcode),
             // Store accumulator
             STA => self.do_store_accumulator(opcode),
             // Stack instructions
@@ -436,7 +451,7 @@ impl CPU {
         if result == 0 {
             self.reg.p = self.reg.p | 0b0000_0010;
         } else {
-            self.reg.p = self.reg.p | 0b1111_1101;
+            self.reg.p = self.reg.p & 0b1111_1101;
         }
 
         if result & 0b1000_0000 != 0 {
@@ -464,7 +479,6 @@ impl CPU {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ops::*;
     
     #[test]
     fn test_0xa9_lda_immediate_load_data() {
@@ -568,7 +582,7 @@ mod tests {
         ]);
         cpu.interrupt_reset();
         cpu.run();
-        assert_eq!(cpu.reg.get_overflow(), false);
+        assert_eq!(cpu.reg.get_carry(), false);
 
         //  1 + -1 = 0, returns C = 1
         cpu.load_program(&[
@@ -578,7 +592,7 @@ mod tests {
         ]);
         cpu.interrupt_reset();
         cpu.run();
-        assert_eq!(cpu.reg.get_overflow(), true);
+        assert_eq!(cpu.reg.get_carry(), true);
 
         //  127 + 1 = 128, returns C = 0
         cpu.load_program(&[
@@ -588,17 +602,17 @@ mod tests {
         ]);
         cpu.interrupt_reset();
         cpu.run();
-        assert_eq!(cpu.reg.get_overflow(), false);
+        assert_eq!(cpu.reg.get_carry(), false);
         
-        //  128 + -1 = -129, returns C = 1
+        //  -128 + -1 = -129, returns C = 1
         cpu.load_program(&[
             0xA9, 0x80,
-            0x69, 0x01,
+            0x69, 0xFF,
             0x00
         ]);
         cpu.interrupt_reset();
         cpu.run();
-        assert_eq!(cpu.reg.get_overflow(), true);
+        assert_eq!(cpu.reg.get_carry(), true);
     }
 
     #[test]
