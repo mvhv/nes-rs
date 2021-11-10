@@ -8,7 +8,6 @@ use crate::cpu::ops::Opcode;
 use crate::cpu::addr::AddressMode;
 
 use std::ops::Range;
-use std::result;
 
 use self::ops::Mnemonic;
 
@@ -21,6 +20,7 @@ pub struct CPU {
     /// CPU Memory
     mem: MemoryMap<0xFFFF>,
 }
+
 
 fn twos_add_overflow_carry(value: u8, operand: u8) ->  (u8, bool, bool) {
     let val_pos = is_positive(value);
@@ -37,13 +37,16 @@ fn twos_add_overflow_carry(value: u8, operand: u8) ->  (u8, bool, bool) {
     (result, overflow, carry)
 }
 
+
 fn is_negative(val:u8) -> bool {
     (val >> 7) != 0
 }
 
+
 fn is_positive(val:u8) -> bool {
     (val >> 7) == 0
 }
+
 
 fn sign_bit(val: u8) -> u8 {
     val >> 7
@@ -57,15 +60,16 @@ impl CPU {
     const SAVE_RAM_ADDR_MIN: u16 = 0x6000;
     const PRG_ROM_ADDR_MIN: u16 = 0x8000;
     const NES_ADDR_MAX: u16 = 0xFFFF;
-
-    const CPU_RAM: Range<u16> = CPU::CPU_RAM_ADDR_MIN..CPU::IO_REG_ADDR_MIN;
-    const IO_REG: Range<u16> = CPU::IO_REG_ADDR_MIN..CPU::EXP_ROM_ADDR_MIN;
+    // const CPU_RAM: Range<u16> = CPU::CPU_RAM_ADDR_MIN..CPU::IO_REG_ADDR_MIN;
+    // const IO_REG: Range<u16> = CPU::IO_REG_ADDR_MIN..CPU::EXP_ROM_ADDR_MIN;
 
     const STACK_ADDR_MIN: u16 = 0x0100;
     const STACK_ADDR_MAX: u16 = 0x01FF;
 
     const PRG_START_ADDR: u16 = 0xFFFC;
+}
 
+impl CPU {
 
     fn update_zn_from_accumulator(&mut self) {
         self.reg.set_negative(self.reg.a >= 0x80);
@@ -196,12 +200,14 @@ impl CPU {
     }
 
 
-    fn do_break(&mut self, opcode: &Opcode) {
+    fn do_break(&mut self, _opcode: &Opcode) {
         self.reg.set_interrupt(true);
         self.reg.pc += 1;
 
         self.push_u16(self.reg.pc);
         self.push_u8(self.reg.p);
+
+        self.reg.set_break(true);
         // DO INTERRUPT STUFF ================================================================================
     }
 
@@ -345,16 +351,6 @@ impl CPU {
     }
 
 
-    fn do_transfer(&mut self, opcode: &Opcode) {
-        if opcode.code == 0xAA {
-            self.reg.x = self.reg.a;
-            self.update_zero_and_negative_flags(self.reg.x);
-        } else {
-            todo!()
-        }
-    }
-
-
     fn do_register_update(&mut self, opcode: &Opcode) {
         let value = match &opcode.mnemonic {
             Mnemonic::TAX | Mnemonic::TAY => self.reg.a,
@@ -409,13 +405,13 @@ impl CPU {
     }
 
 
-    fn do_return_from_interrupt(&mut self, opcode: &Opcode) {
+    fn do_return_from_interrupt(&mut self, _opcode: &Opcode) {
         self.reg.p = self.pull_u8();
         self.reg.pc = self.pull_u16();
     }
 
 
-    fn do_return_from_subroutine(&mut self, opcode: &Opcode) {
+    fn do_return_from_subroutine(&mut self, _opcode: &Opcode) {
         self.reg.pc = self.pull_u16().wrapping_add(1);
     }
 
@@ -446,21 +442,19 @@ impl CPU {
         self.increment_pc(opcode);
     }
 
-}
-
-
-impl CPU {
     pub fn new() -> Self {
         CPU {
             reg: RegisterSet::default(),
             mem: MemoryMap::default()
         }
     }
-    
+
+
     pub fn load(&mut self, addr: u16, data: &[u8]) {
         self.mem.load(addr, data);
     }
-    
+
+
     fn get_operand_address(&self, mode: &AddressMode) -> u16 {
         use AddressMode::*;
         match mode {
@@ -521,6 +515,7 @@ impl CPU {
         }
     }
 
+
     pub fn step(&mut self, code: u8) {
         use ops::Mnemonic::*;
 
@@ -547,7 +542,8 @@ impl CPU {
             // Flag (processor status) instructions
             CLC | SEC | CLI | SEI | CLV | CLD | SED => self.do_update_flag(opcode),
             // Jump
-            JMP | JSR => self.do_jump(opcode),
+            JMP => self.do_jump(opcode),
+            JSR => self.do_subroutine_jump(opcode),
             // Load register
             LDA | LDX | LDY => self.do_load(opcode),
             // Logical shift right
@@ -572,6 +568,7 @@ impl CPU {
         }
     }
 
+
     /// Continuously run program from current location until BRK
     pub fn run(&mut self) {
         loop {
@@ -582,46 +579,13 @@ impl CPU {
         }
     }
 
-    fn lda(&mut self, code: &Opcode) {
-        let param = self.mem.read_u8(self.reg.pc);
-        self.reg.pc += 1;
-        self.reg.a = param;
-
-        self.update_zero_and_negative_flags(self.reg.a)
-    }
-
-
-    fn tax(&mut self, code: &Opcode) {
-        self.reg.x = self.reg.a;
-
-        self.update_zero_and_negative_flags(self.reg.x);
-    }
-
-    fn inx(&mut self, code: &Opcode) {
-        // TODO: this sucks, look into Wrapping<u8>
-        self.reg.x = self.reg.x.wrapping_add(1);
-    }
-
-    fn update_zero_and_negative_flags(&mut self, result: u8) {
-        if result == 0 {
-            self.reg.p = self.reg.p | 0b0000_0010;
-        } else {
-            self.reg.p = self.reg.p & 0b1111_1101;
-        }
-
-        if result & 0b1000_0000 != 0 {
-            self.reg.p = self.reg.p | 0b1000_0000;
-        } else {
-            self.reg.p = self.reg.p & 0b0111_1111;
-        }
-    }
-
     
     /// Reset register state and initialise program counter to value at 0xFFFC
-    fn interrupt_reset(&mut self) {
+    pub fn interrupt_reset(&mut self) {
         self.reg.reset();
         self.reg.pc = self.mem.read_u16(CPU::PRG_START_ADDR);
     }
+
 
     pub fn load_program(&mut self, program: &[u8]) {
         self.mem.load(CPU::PRG_ROM_ADDR_MIN, program);
@@ -842,10 +806,6 @@ mod tests {
         cpu.interrupt_reset();
         cpu.run();
         assert_eq!(cpu.reg.get_overflow(), true);
-    }
-
-    fn test_use_carry() {
-        todo!();
     }
 }
 
