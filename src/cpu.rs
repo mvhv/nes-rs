@@ -174,13 +174,11 @@ impl CPU {
     }
 
     fn do_break(&mut self, _opcode: &Opcode) {
-        // self.reg.set_interrupt(true); this flag is actually for masking interrupts
         self.reg.pc += 1;
-
         self.push_u16(self.reg.pc);
-        self.push_u8(self.reg.p);
+        // BRK sets bits 4 and 5 in the word pushed to the stack (but not in the actual register)
+        self.push_u8(self.reg.p | 0b0011_0000);
 
-        self.reg.set_break(true);
         // DO INTERRUPT STUFF ================================================================================
     }
 
@@ -386,10 +384,13 @@ impl CPU {
             Mnemonic::TSX => self.reg.sp = self.reg.x,
             Mnemonic::PHA => self.push_u8(self.reg.a),
             Mnemonic::PLA => self.reg.a = self.pull_u8(),
-            Mnemonic::PHP => self.push_u16(self.reg.pc),
-            Mnemonic::PLP => self.reg.pc = self.pull_u16(),
+            // PHP pushes the processor word with 4 and 5 set, and PLP ignores them when pulling
+            Mnemonic::PHP => self.push_u8(self.reg.p | 0b0011_0000),
+            Mnemonic::PLP => self.reg.p = self.pull_u8() & !0b0011_0000,
             x => panic!("ERROR: Stack transfer not a valid instruction for: {:?}", x),
         }
+
+        self.increment_pc(opcode);
     }
 
     fn do_store_register(&mut self, opcode: &Opcode) {

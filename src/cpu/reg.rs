@@ -30,7 +30,8 @@ impl RegisterSet {
     const BITMASK_NEGATIVE: u8 = 0b1000_0000;
     const BITMASK_OVERFLOW: u8 = 0b0100_0000;
     // 3rd status bit unused
-    const BITMASK_BREAK: u8 = 0b0001_0000;
+    const BITMASK_B5: u8 = 0b0010_0000;
+    const BITMASK_B4: u8 = 0b0001_0000;
     const BITMASK_DECIMAL: u8 = 0b0000_1000;
     const BITMASK_INTERRUPT: u8 = 0b0000_0100;
     const BITMASK_ZERO: u8 = 0b0000_0010;
@@ -60,12 +61,20 @@ impl RegisterSet {
         self.set_flag(Self::BITMASK_OVERFLOW, value);
     }
 
-    pub fn get_break(&mut self) -> bool {
-        (self.p & Self::BITMASK_BREAK) != 0
+    pub fn get_b5(&mut self) -> bool {
+        (self.p & Self::BITMASK_B5) != 0
     }
 
-    pub fn set_break(&mut self, value: bool) {
-        self.set_flag(Self::BITMASK_BREAK, value);
+    pub fn set_b5(&mut self, value: bool) {
+        self.set_flag(Self::BITMASK_B5, value);
+    }
+
+    pub fn get_b4(&mut self) -> bool {
+        (self.p & Self::BITMASK_B4) != 0
+    }
+
+    pub fn set_b4(&mut self, value: bool) {
+        self.set_flag(Self::BITMASK_B4, value);
     }
 
     pub fn get_decimal(&mut self) -> bool {
