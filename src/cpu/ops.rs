@@ -91,7 +91,7 @@ pub enum Mnemonic {
     /// Store X register
     STX,
     /// Store Y register
-    STY,    
+    STY,
 }
 
 #[derive(Debug)]
@@ -105,14 +105,28 @@ pub struct Opcode {
 }
 
 impl Opcode {
-    pub fn new(mnemonic: Mnemonic, code: u8, bytes: u16, cycles: u8, page_fault_penalty: u8, mode: AddressMode) -> Self {
-        Opcode { mnemonic, code, bytes, cycles, page_fault_penalty, mode }
+    pub fn new(
+        mnemonic: Mnemonic,
+        code: u8,
+        bytes: u16,
+        cycles: u8,
+        page_fault_penalty: u8,
+        mode: AddressMode,
+    ) -> Self {
+        Opcode {
+            mnemonic,
+            code,
+            bytes,
+            cycles,
+            page_fault_penalty,
+            mode,
+        }
     }
 }
 
 // impl From<u8> for Opcode {
 //     fn from(u8: code) -> Self {
-        
+
 //     }
 // }
 
@@ -156,7 +170,7 @@ lazy_static! {
         Opcode::new(AND, 0x39, 3, 4, 1, AbsoluteY),
         Opcode::new(AND, 0x21, 2, 6, 0, IndirectX),
         Opcode::new(AND, 0x31, 2, 5, 1, IndirectX),
-        
+
         // ASL - arithmetic shift left
         // 0 shifted into bit-0 and bit-7 is shifted into carry
         // N Z C
@@ -165,7 +179,7 @@ lazy_static! {
         Opcode::new(ASL, 0x16, 2, 6, 0, ZeroPageX),
         Opcode::new(ASL, 0x0E, 3, 6, 0, Absolute),
         Opcode::new(ASL, 0x1E, 3, 7, 0, AbsoluteX),
-        
+
         // BIT - test bits
         // N V Z
         Opcode::new(BIT, 0x24, 2, 3, 0, ZeroPage),
@@ -206,7 +220,7 @@ lazy_static! {
         Opcode::new(CPX, 0xE0, 2, 2, 0, Immediate),
         Opcode::new(CPX, 0xE4, 2, 3, 0, ZeroPage),
         Opcode::new(CPX, 0xEC, 3, 4, 0, Absolute),
-        
+
         // CPY - compare y register
         // Op and flag results identical to CMP ops
         // N Z C
@@ -231,8 +245,8 @@ lazy_static! {
         Opcode::new(EOR, 0x59, 3, 4, 1, AbsoluteY),
         Opcode::new(EOR, 0x41, 2, 6, 0, IndirectX),
         Opcode::new(EOR, 0x51, 2, 5, 1, IndirectY),
-        
-        // CLX, SEX - flag instructions 
+
+        // CLX, SEX - flag instructions
         // Flags as noted
         Opcode::new(CLC, 0x18, 1, 2, 1, Implicit), // clear carry
         Opcode::new(SEC, 0x38, 1, 2, 1, Implicit), // set carry
@@ -248,7 +262,7 @@ lazy_static! {
         Opcode::new(INC, 0xF6, 2, 6, 0, ZeroPageX),
         Opcode::new(INC, 0xEE, 3, 6, 0, Absolute),
         Opcode::new(INC, 0xFE, 3, 7, 0, AbsoluteX),
-        
+
         // JMP - jump
         // No flags
         Opcode::new(JMP, 0x4C, 3, 3, 0, Absolute),
@@ -296,7 +310,7 @@ lazy_static! {
         // NOP - no operation
         // No Flags
         Opcode::new(NOP, 0xEA, 1, 2, 0, Implicit),
-        
+
         // ORA - bitwise OR with accumulator
         // N Z
         Opcode::new(ORA, 0x09, 2, 2, 0, Immediate),
@@ -307,7 +321,7 @@ lazy_static! {
         Opcode::new(ORA, 0x19, 3, 4, 1, AbsoluteY),
         Opcode::new(ORA, 0x01, 2, 6, 0, IndirectX),
         Opcode::new(ORA, 0x11, 2, 5, 1, IndirectY),
-        
+
         // Txx, DEx, INx - register instructions
         // N Z
         Opcode::new(TAX, 0xAA, 1, 2, 0, Implicit), // transfer a to x
@@ -318,7 +332,7 @@ lazy_static! {
         Opcode::new(TYA, 0x98, 1, 2, 0, Implicit), // transfer y to a
         Opcode::new(DEY, 0x88, 1, 2, 0, Implicit), // decrement y
         Opcode::new(INY, 0xC8, 1, 2, 0, Implicit), // increment y
-        
+
         // ROL - rotate left
         // Carry into bit-0 and bit-7 into carry
         // N Z C
@@ -336,12 +350,12 @@ lazy_static! {
         Opcode::new(ROR, 0x76, 2, 6, 0, ZeroPageX),
         Opcode::new(ROR, 0x6E, 3, 6, 0, Absolute),
         Opcode::new(ROR, 0x7E, 3, 7, 0, AbsoluteX),
-        
+
         // RTI - return from interrupt
         // Retrives flags and pc from stack (in that order)
         // Return address is the actual address retrieved from the stack
         Opcode::new(RTI, 0x40, 1, 6, 0, Implicit),
-        
+
         // RTS - return from subroutine
         // Retrives pc from stack (low-byte first)
         // Return address is the address retrieved from stack +1
@@ -379,7 +393,7 @@ lazy_static! {
         Opcode::new(PLA, 0x68, 2, 4, 0, Implicit), // pull accumulator
         Opcode::new(PHP, 0x08, 2, 3, 0, Implicit), // push processor status
         Opcode::new(PLP, 0x28, 2, 4, 0, Implicit), // pull processor status
-        
+
         // STX - store x register
         // No flags
         Opcode::new(STX, 0x86, 2, 3, 0, ZeroPage),
@@ -392,7 +406,7 @@ lazy_static! {
         Opcode::new(STY, 0x94, 2, 4, 0, ZeroPageY),
         Opcode::new(STY, 0x8C, 3, 4, 0, Absolute),
     ];
-    
+
     pub static ref CPU_OPCODES_MAP: HashMap<u8, &'static Opcode> =
         NMOS_6502_OPCODES.iter()
             .map(|op| (op.code, op))
@@ -405,10 +419,11 @@ mod tests {
 
     #[test]
     fn test_no_duplicate_nmos_6502_ops() {
-        let ops = NMOS_6502_OPCODES.iter()
+        let ops = NMOS_6502_OPCODES
+            .iter()
             .map(|op| op.code)
             .collect::<Vec<_>>();
-        
+
         let mut sorted = ops.clone();
         sorted.sort();
         sorted.dedup();

@@ -1,16 +1,15 @@
+mod addr;
 mod ops;
 mod reg;
-mod addr;
 
-use crate::memory::MemoryMap;
-use crate::cpu::reg::RegisterSet;
-use crate::cpu::ops::Opcode;
 use crate::cpu::addr::AddressMode;
+use crate::cpu::ops::Opcode;
+use crate::cpu::reg::RegisterSet;
+use crate::memory::MemoryMap;
 
 use std::ops::Range;
 
 use self::ops::Mnemonic;
-
 
 /// The NES CPU - Ricoh 2A03 (Modified MOS 6502)
 #[derive(Default)]
@@ -21,8 +20,7 @@ pub struct CPU {
     mem: MemoryMap<0xFFFF>,
 }
 
-
-fn twos_add_overflow_carry(value: u8, operand: u8) ->  (u8, bool, bool) {
+fn twos_add_overflow_carry(value: u8, operand: u8) -> (u8, bool, bool) {
     let val_pos = is_positive(value);
     let op_pos = is_positive(operand);
 
@@ -37,16 +35,13 @@ fn twos_add_overflow_carry(value: u8, operand: u8) ->  (u8, bool, bool) {
     (result, overflow, carry)
 }
 
-
-fn is_negative(val:u8) -> bool {
+fn is_negative(val: u8) -> bool {
     (val >> 7) != 0
 }
 
-
-fn is_positive(val:u8) -> bool {
+fn is_positive(val: u8) -> bool {
     (val >> 7) == 0
 }
-
 
 fn sign_bit(val: u8) -> u8 {
     val >> 7
@@ -70,43 +65,33 @@ impl CPU {
 }
 
 impl CPU {
-
     fn update_zn_from_accumulator(&mut self) {
         self.reg.set_negative(self.reg.a >= 0x80);
         self.reg.set_zero(self.reg.a == 0x00);
     }
-
 
     fn update_zn_from_value(&mut self, value: u8) {
         self.reg.set_negative(value >= 0x80);
         self.reg.set_zero(value == 0x00);
     }
 
-
     fn get_operand_u8(&mut self, opcode: &Opcode) -> u8 {
-        self.mem
-            .read_u8(
-                self.get_operand_address(&opcode.mode)
-        )
+        self.mem.read_u8(self.get_operand_address(&opcode.mode))
     }
-
 
     fn get_operand_u16(&mut self, opcode: &Opcode) -> u16 {
-        self.mem
-            .read_u16(
-                self.get_operand_address(&opcode.mode)
-        )
+        self.mem.read_u16(self.get_operand_address(&opcode.mode))
     }
-
 
     fn increment_pc(&mut self, opcode: &Opcode) {
         self.reg.pc += opcode.bytes - 1;
     }
 
-
     fn do_base_add(&mut self, operand: u8, carry: u8) {
-        let (partial_result, partial_overflow, partial_carry) = twos_add_overflow_carry(self.reg.a, operand);
-        let (carried_result, carried_overflow, carried_carry) = twos_add_overflow_carry(partial_result, carry);
+        let (partial_result, partial_overflow, partial_carry) =
+            twos_add_overflow_carry(self.reg.a, operand);
+        let (carried_result, carried_overflow, carried_carry) =
+            twos_add_overflow_carry(partial_result, carry);
 
         self.reg.a = carried_result;
 
@@ -115,28 +100,23 @@ impl CPU {
         self.reg.set_overflow(partial_overflow || carried_overflow);
     }
 
-
     fn do_add_sub(&mut self, opcode: &Opcode) {
         let operand = self.get_operand_u8(opcode);
         let carry_multiplier = self.reg.get_carry() as u8;
 
-        if self.reg.get_decimal() {
-            panic!("ERROR: Decimal mode is not avaliable on the 6502");
-        } else {
-            match &opcode.mnemonic {
-                Mnemonic::ADC => self.do_base_add(operand, 0x01 * carry_multiplier),
-                Mnemonic::SBC => self.do_base_add(!operand + 1, 0xFF * carry_multiplier),
-                x => panic!("ERROR: Addition not a valid instruction for: {:?}", x)
-            }
+        // On the NES the decimal flag has no effect, else we'd check for it here
+        match &opcode.mnemonic {
+            Mnemonic::ADC => self.do_base_add(operand, 0x01 * carry_multiplier),
+            Mnemonic::SBC => self.do_base_add(!operand + 1, 0xFF * carry_multiplier),
+            x => panic!("ERROR: Addition not a valid instruction for: {:?}", x),
         }
 
         self.increment_pc(opcode);
     }
 
-
     fn do_and(&mut self, opcode: &Opcode) {
         let operand = self.get_operand_u8(opcode);
-        
+
         self.reg.a &= operand;
 
         self.update_zn_from_accumulator();
@@ -144,30 +124,25 @@ impl CPU {
         self.increment_pc(opcode);
     }
 
-
     fn do_left_shift(&mut self, opcode: &Opcode) {
-        
         match &opcode.mode {
-            AddressMode::Accumulator =>{
-                self.reg.set_carry(is_positive(self.reg.a));
+            AddressMode::Accumulator => {
+                self.reg.set_carry(is_negative(self.reg.a));
                 self.reg.a <<= 1;
                 self.update_zn_from_accumulator();
-            },
+            }
             mode => {
                 let addr = self.get_operand_address(mode);
                 let operand = self.mem.read_u8(addr);
-                self.reg.set_carry(is_positive(operand));
+                self.reg.set_carry(is_negative(operand));
                 let result = operand << 1;
                 self.mem.write_u8(addr, result);
                 self.update_zn_from_value(result);
-            },
+            }
         }
-        
+
         self.increment_pc(opcode);
-
-        
     }
-
 
     fn do_bit_test(&mut self, opcode: &Opcode) {
         let operand = self.get_operand_u8(opcode);
@@ -177,7 +152,6 @@ impl CPU {
 
         self.increment_pc(opcode);
     }
-
 
     fn do_branch(&mut self, opcode: &Opcode) {
         let branch_address = self.get_operand_address(&opcode.mode);
@@ -192,16 +166,15 @@ impl CPU {
             Mnemonic::BNE => !self.reg.get_zero(),
             Mnemonic::BEQ => self.reg.get_zero(),
             x => panic!("ERROR: Branch not a valid instruction for: {:?}", x),
-        }{
+        } {
             self.reg.pc = branch_address;
         } else {
             self.increment_pc(opcode);
         }
     }
 
-
     fn do_break(&mut self, _opcode: &Opcode) {
-        self.reg.set_interrupt(true);
+        // self.reg.set_interrupt(true); this flag is actually for masking interrupts
         self.reg.pc += 1;
 
         self.push_u16(self.reg.pc);
@@ -210,7 +183,6 @@ impl CPU {
         self.reg.set_break(true);
         // DO INTERRUPT STUFF ================================================================================
     }
-
 
     fn do_compare(&mut self, opcode: &Opcode) {
         let operand = self.get_operand_u8(opcode);
@@ -228,7 +200,6 @@ impl CPU {
         self.increment_pc(opcode);
     }
 
-
     fn do_crement(&mut self, opcode: &Opcode) {
         let addr = self.get_operand_address(&opcode.mode);
         let value = self.mem.read_u8(addr);
@@ -236,7 +207,10 @@ impl CPU {
         let result = match &opcode.mnemonic {
             Mnemonic::DEC => value.wrapping_add(0x01),
             Mnemonic::INC => value.wrapping_add(0xFF),
-            x => panic!("ERROR: Increment/Decrement not a valid instruction for: {:?}", x),
+            x => panic!(
+                "ERROR: Increment/Decrement not a valid instruction for: {:?}",
+                x
+            ),
         };
 
         self.mem.write_u8(addr, result);
@@ -245,9 +219,8 @@ impl CPU {
         self.increment_pc(opcode);
     }
 
-
     fn do_update_flag(&mut self, opcode: &Opcode) {
-        use ops::Mnemonic::{CLC, SEC, CLI, SEI, CLV, CLD, SED};
+        use ops::Mnemonic::{CLC, CLD, CLI, CLV, SEC, SED, SEI};
 
         match &opcode.mnemonic {
             CLC => self.reg.set_carry(false),
@@ -259,10 +232,9 @@ impl CPU {
             SED => self.reg.set_decimal(true),
             x => panic!("{:?} is not a flag operation", x),
         }
-        
+
         self.increment_pc(opcode);
     }
-    
 
     fn do_bitwise_xor(&mut self, opcode: &Opcode) {
         let operand = self.get_operand_u8(opcode);
@@ -274,29 +246,24 @@ impl CPU {
         self.increment_pc(opcode);
     }
 
-
     fn do_jump(&mut self, opcode: &Opcode) {
         let operand = self.get_operand_u16(opcode);
         self.reg.pc = operand;
     }
 
-
     fn get_stack_pointer(&self) -> u16 {
         CPU::STACK_ADDR_MIN + self.reg.sp as u16
     }
-
 
     fn push_u8(&mut self, value: u8) {
         self.reg.sp -= 1;
         self.mem.write_u8(self.get_stack_pointer(), value);
     }
 
-
     fn push_u16(&mut self, value: u16) {
         self.reg.sp -= 2;
         self.mem.write_u16(self.get_stack_pointer(), value);
     }
-
 
     fn pull_u8(&mut self) -> u8 {
         let value = self.mem.read_u8(self.get_stack_pointer());
@@ -304,25 +271,22 @@ impl CPU {
         value
     }
 
-
     fn pull_u16(&mut self) -> u16 {
         let value = self.mem.read_u16(self.get_stack_pointer());
         self.reg.sp += 2;
         value
     }
 
-
     fn do_subroutine_jump(&mut self, opcode: &Opcode) {
         let operand = self.get_operand_u16(opcode);
         self.increment_pc(opcode);
         self.push_u16(self.reg.pc - 1);
-        self.reg.pc = operand;        
+        self.reg.pc = operand;
     }
-
 
     fn do_load(&mut self, opcode: &Opcode) {
         let operand = self.get_operand_u8(opcode);
-        
+
         match &opcode.mnemonic {
             Mnemonic::LDA => self.reg.a = operand,
             Mnemonic::LDX => self.reg.x = operand,
@@ -334,11 +298,9 @@ impl CPU {
         self.increment_pc(opcode);
     }
 
-
     fn do_nop(&mut self, opcode: &Opcode) {
         self.increment_pc(opcode);
     }
-
 
     fn do_bitwise_or(&mut self, opcode: &Opcode) {
         let operand = self.get_operand_u8(opcode);
@@ -350,7 +312,6 @@ impl CPU {
         self.increment_pc(opcode);
     }
 
-
     fn do_register_update(&mut self, opcode: &Opcode) {
         let value = match &opcode.mnemonic {
             Mnemonic::TAX | Mnemonic::TAY => self.reg.a,
@@ -360,35 +321,40 @@ impl CPU {
             Mnemonic::TYA => self.reg.y,
             Mnemonic::DEY => self.reg.y.wrapping_add(0xFF),
             Mnemonic::INY => self.reg.y.wrapping_add(0x01),
-            x => panic!("ERROR: Register update not a valid instruction for: {:?}", x),
+            x => panic!(
+                "ERROR: Register update not a valid instruction for: {:?}",
+                x
+            ),
         };
 
         match &opcode.mnemonic {
             Mnemonic::TAX | Mnemonic::DEX | Mnemonic::INX => self.reg.x = value,
-            Mnemonic::TAY | Mnemonic::DEY | Mnemonic::INY=> self.reg.y = value,
+            Mnemonic::TAY | Mnemonic::DEY | Mnemonic::INY => self.reg.y = value,
             Mnemonic::TXA | Mnemonic::TYA => self.reg.a = value,
-            x => panic!("ERROR: Register update not a valid instruction for: {:?}", x),
+            x => panic!(
+                "ERROR: Register update not a valid instruction for: {:?}",
+                x
+            ),
         };
 
         self.update_zn_from_value(value);
         self.increment_pc(opcode);
     }
 
-
     fn do_rotate_left(&mut self, opcode: &Opcode) {
-        let new_carry = is_positive(self.reg.a);
+        let new_carry = is_negative(self.reg.a);
 
         self.reg.a = if self.reg.get_carry() {
             self.reg.a | 0b1000_0000
         } else {
             self.reg.a & 0b0111_1111
-        }.rotate_left(1);
+        }
+        .rotate_left(1);
 
         self.reg.set_carry(new_carry);
         self.update_zn_from_accumulator();
         self.increment_pc(opcode);
     }
-
 
     fn do_rotate_right(&mut self, opcode: &Opcode) {
         let new_carry = (self.reg.a & 0b0000_0001 != 0);
@@ -397,24 +363,22 @@ impl CPU {
             self.reg.a | 0b0000_0001
         } else {
             self.reg.a & 0b1111_1110
-        }.rotate_right(1);
+        }
+        .rotate_right(1);
 
         self.reg.set_carry(new_carry);
         self.update_zn_from_accumulator();
         self.increment_pc(opcode);
     }
 
-
     fn do_return_from_interrupt(&mut self, _opcode: &Opcode) {
         self.reg.p = self.pull_u8();
         self.reg.pc = self.pull_u16();
     }
 
-
     fn do_return_from_subroutine(&mut self, _opcode: &Opcode) {
         self.reg.pc = self.pull_u16().wrapping_add(1);
     }
-
 
     fn do_stack_transfer(&mut self, opcode: &Opcode) {
         match &opcode.mnemonic {
@@ -430,13 +394,14 @@ impl CPU {
 
     fn do_store_register(&mut self, opcode: &Opcode) {
         let addr = self.get_operand_address(&opcode.mode);
-        self.mem.write_u8(addr,
+        self.mem.write_u8(
+            addr,
             match &opcode.mnemonic {
                 Mnemonic::STA => self.reg.a,
                 Mnemonic::STX => self.reg.x,
                 Mnemonic::STY => self.reg.y,
                 x => panic!("ERROR: Register store not a valid instruction for: {:?}", x),
-            }
+            },
         );
 
         self.increment_pc(opcode);
@@ -445,15 +410,13 @@ impl CPU {
     pub fn new() -> Self {
         CPU {
             reg: RegisterSet::default(),
-            mem: MemoryMap::default()
+            mem: MemoryMap::default(),
         }
     }
-
 
     pub fn load(&mut self, addr: u16, data: &[u8]) {
         self.mem.load(addr, data);
     }
-
 
     fn get_operand_address(&self, mode: &AddressMode) -> u16 {
         use AddressMode::*;
@@ -462,39 +425,25 @@ impl CPU {
             Accumulator => self.reg.a as u16, // may need to replace this
             Immediate => self.reg.pc,
             ZeroPage => self.mem.read_u8(self.reg.pc) as u16,
-            ZeroPageX => {
-                self.mem
-                .read_u8(self.reg.pc)
-                .wrapping_add(self.reg.x) as u16
-            },
-            ZeroPageY => {
-                self.mem
-                .read_u8(self.reg.pc)
-                .wrapping_add(self.reg.y) as u16
-            },
+            ZeroPageX => self.mem.read_u8(self.reg.pc).wrapping_add(self.reg.x) as u16,
+            ZeroPageY => self.mem.read_u8(self.reg.pc).wrapping_add(self.reg.y) as u16,
             Relative => self.mem.read_u8(self.reg.pc) as u16 + self.reg.pc, // for branch instructions, there is no operand really.
             Absolute => self.mem.read_u16(self.reg.pc), // may also need to replace this
-            AbsoluteX => {
-                self.mem
+            AbsoluteX => self
+                .mem
                 .read_u16(self.reg.pc)
-                .wrapping_add(self.reg.x as u16)
-            }
-            AbsoluteY => {
-                self.mem
+                .wrapping_add(self.reg.x as u16),
+            AbsoluteY => self
+                .mem
                 .read_u16(self.reg.pc)
-                .wrapping_add(self.reg.y as u16)
-            },
+                .wrapping_add(self.reg.y as u16),
             Indirect => {
-                let ptr = self.mem
-                .read_u16(self.reg.pc);
-                
-                self.mem
-                .read_u16(ptr)
+                let ptr = self.mem.read_u16(self.reg.pc);
+
+                self.mem.read_u16(ptr)
             }
             IndirectX => {
-                let ptr = self.mem
-                    .read_u8(self.reg.pc)
-                    .wrapping_add(self.reg.x);
+                let ptr = self.mem.read_u8(self.reg.pc).wrapping_add(self.reg.x);
 
                 u16::from_le_bytes([
                     self.mem.read_u8(ptr as u16),
@@ -502,25 +451,25 @@ impl CPU {
                 ])
             }
             IndirectY => {
-                let ptr = self.mem
-                    .read_u8(self.reg.pc);
+                let ptr = self.mem.read_u8(self.reg.pc);
 
                 u16::from_le_bytes([
                     self.mem.read_u8(ptr as u16),
                     self.mem.read_u8(ptr.wrapping_add(1) as u16),
                 ])
-                    .wrapping_add(self.reg.y as u16)
-            },
+                .wrapping_add(self.reg.y as u16)
+            }
             NoAddressing => panic!("AddressMode Error: NoAddressing is not implemented."),
         }
     }
-
 
     pub fn step(&mut self, code: u8) {
         use ops::Mnemonic::*;
 
         self.reg.pc += 1;
-        let &opcode = ops::CPU_OPCODES_MAP.get(&code).expect(&format!("ERROR: Opcode {:x} unimplemented", code));
+        let &opcode = ops::CPU_OPCODES_MAP
+            .get(&code)
+            .expect(&format!("ERROR: Opcode {:x} unimplemented", code));
 
         match opcode.mnemonic {
             // Add or Subtract
@@ -568,7 +517,6 @@ impl CPU {
         }
     }
 
-
     /// Continuously run program from current location until BRK
     pub fn run(&mut self) {
         loop {
@@ -579,13 +527,11 @@ impl CPU {
         }
     }
 
-    
     /// Reset register state and initialise program counter to value at 0xFFFC
     pub fn interrupt_reset(&mut self) {
         self.reg.reset();
         self.reg.pc = self.mem.read_u16(CPU::PRG_START_ADDR);
     }
-
 
     pub fn load_program(&mut self, program: &[u8]) {
         self.mem.load(CPU::PRG_ROM_ADDR_MIN, program);
@@ -593,12 +539,10 @@ impl CPU {
     }
 }
 
-
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_0xa9_lda_immediate_load_data() {
         let mut cpu = CPU::new();
@@ -679,12 +623,7 @@ mod tests {
         let mut cpu = CPU::new();
         // Set C = 1
         // 1 + 1 + C = 3
-        cpu.load_program(&[
-            0x38,
-            0xA9, 0x01,
-            0x69, 0x01,
-            0x00
-        ]);
+        cpu.load_program(&[0x38, 0xA9, 0x01, 0x69, 0x01, 0x00]);
         cpu.interrupt_reset();
         cpu.run();
         assert_eq!(cpu.reg.a, 0x03);
@@ -694,41 +633,25 @@ mod tests {
     fn test_set_carry() {
         let mut cpu = CPU::new();
         //  1 + 1 = 2, returns C = 0
-        cpu.load_program(&[
-            0xA9, 0x01,
-            0x69, 0x01,
-            0x00
-        ]);
+        cpu.load_program(&[0xA9, 0x01, 0x69, 0x01, 0x00]);
         cpu.interrupt_reset();
         cpu.run();
         assert_eq!(cpu.reg.get_carry(), false);
 
         //  1 + -1 = 0, returns C = 1
-        cpu.load_program(&[
-            0xA9, 0x01,
-            0x69, 0xFF,
-            0x00
-        ]);
+        cpu.load_program(&[0xA9, 0x01, 0x69, 0xFF, 0x00]);
         cpu.interrupt_reset();
         cpu.run();
         assert_eq!(cpu.reg.get_carry(), true);
 
         //  127 + 1 = 128, returns C = 0
-        cpu.load_program(&[
-            0xA9, 0x7F,
-            0x69, 0x01,
-            0x00
-        ]);
+        cpu.load_program(&[0xA9, 0x7F, 0x69, 0x01, 0x00]);
         cpu.interrupt_reset();
         cpu.run();
         assert_eq!(cpu.reg.get_carry(), false);
-        
+
         //  -128 + -1 = -129, returns C = 1
-        cpu.load_program(&[
-            0xA9, 0x80,
-            0x69, 0xFF,
-            0x00
-        ]);
+        cpu.load_program(&[0xA9, 0x80, 0x69, 0xFF, 0x00]);
         cpu.interrupt_reset();
         cpu.run();
         assert_eq!(cpu.reg.get_carry(), true);
@@ -738,74 +661,45 @@ mod tests {
     fn test_set_overflow() {
         let mut cpu = CPU::new();
         //  1 + 1 = 2, returns V = 0
-        cpu.load_program(&[
-            0xA9, 0x01,
-            0x69, 0x01,
-            0x00
-        ]);
+        cpu.load_program(&[0xA9, 0x01, 0x69, 0x01, 0x00]);
         cpu.interrupt_reset();
         cpu.run();
         assert_eq!(cpu.reg.get_overflow(), false);
 
         //  1 + -1 = 0, returns V = 0
-        cpu.load_program(&[
-            0xA9, 0x01,
-            0x69, 0xFF,
-            0x00
-        ]);
+        cpu.load_program(&[0xA9, 0x01, 0x69, 0xFF, 0x00]);
         cpu.interrupt_reset();
         cpu.run();
         assert_eq!(cpu.reg.get_overflow(), false);
 
         //  127 + 1 = 128, returns V = 1
-        cpu.load_program(&[
-            0xA9, 0x7F,
-            0x69, 0x01,
-            0x00
-        ]);
+        cpu.load_program(&[0xA9, 0x7F, 0x69, 0x01, 0x00]);
         cpu.interrupt_reset();
         cpu.run();
         assert_eq!(cpu.reg.get_overflow(), true);
 
         // -128 + -1 = -129, returns V = 1
-        cpu.load_program(&[
-            0xA9, 0x80,
-            0x69, 0xFF,
-            0x00
-        ]);
+        cpu.load_program(&[0xA9, 0x80, 0x69, 0xFF, 0x00]);
         cpu.interrupt_reset();
         cpu.run();
         assert_eq!(cpu.reg.get_overflow(), true);
 
         // 0 - 1 = -1, returns V = 0
-        cpu.load_program(&[
-            0xA9, 0x00,
-            0xE9, 0x01,
-            0x00
-        ]);
+        cpu.load_program(&[0xA9, 0x00, 0xE9, 0x01, 0x00]);
         cpu.interrupt_reset();
         cpu.run();
         assert_eq!(cpu.reg.get_overflow(), false);
-        
+
         // -128 - 1 = -129, returns V = 1
-        cpu.load_program(&[
-            0xA9, 0x80,
-            0xE9, 0x01,
-            0x00
-        ]);
+        cpu.load_program(&[0xA9, 0x80, 0xE9, 0x01, 0x00]);
         cpu.interrupt_reset();
         cpu.run();
         assert_eq!(cpu.reg.get_overflow(), true);
 
         // 127 - -1 = 128, returns V = 1
-        cpu.load_program(&[
-            0xA9, 0x7F,
-            0xE9, 0xFF,
-            0x00
-        ]);
+        cpu.load_program(&[0xA9, 0x7F, 0xE9, 0xFF, 0x00]);
         cpu.interrupt_reset();
         cpu.run();
         assert_eq!(cpu.reg.get_overflow(), true);
     }
 }
-

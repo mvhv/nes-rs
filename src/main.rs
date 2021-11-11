@@ -1,4 +1,4 @@
-use nes_rs::{CPU, prog};
+use nes_rs::{prog, CPU};
 
 fn main() {
     let mut cpu = CPU::new();

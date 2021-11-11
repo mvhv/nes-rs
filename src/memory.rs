@@ -1,6 +1,6 @@
 use std::fmt;
 
-pub struct MemoryMap<const S: usize> ([u8; S]);
+pub struct MemoryMap<const S: usize>([u8; S]);
 
 impl<const S: usize> Default for MemoryMap<S> {
     fn default() -> MemoryMap<S> {
@@ -9,12 +9,11 @@ impl<const S: usize> Default for MemoryMap<S> {
 }
 
 impl<const S: usize> MemoryMap<S> {
-
     pub fn read_u8(&self, addr: u16) -> u8 {
         let addr = addr as usize;
         self.0[addr]
     }
-    
+
     pub fn write_u8(&mut self, addr: u16, val: u8) {
         let addr = addr as usize;
         self.0[addr] = val;
@@ -22,14 +21,14 @@ impl<const S: usize> MemoryMap<S> {
 
     pub fn read_u16(&self, addr: u16) -> u16 {
         let lo = self.read_u8(addr);
-        let hi = self.read_u8(addr+1);
+        let hi = self.read_u8(addr + 1);
         u16::from_le_bytes([lo, hi])
     }
 
     pub fn write_u16(&mut self, addr: u16, val: u16) {
         let [lo, hi] = val.to_le_bytes();
         self.write_u8(addr, lo);
-        self.write_u8(addr+1, hi);
+        self.write_u8(addr + 1, hi);
     }
 
     pub fn load(&mut self, addr: u16, data: &[u8]) {
@@ -40,19 +39,19 @@ impl<const S: usize> MemoryMap<S> {
 }
 
 /// Formats up to 16 bytes into a readable hexdump line
-fn fmt_hexdump_line(line_no: Option<u16>, data:  &[u8]) -> String {
-    let hex_body = data.iter()
+fn fmt_hexdump_line(line_no: Option<u16>, data: &[u8]) -> String {
+    let hex_body = data
+        .iter()
         .enumerate()
-        .map(|(i, &x)| {
-            match i {
-                0x3 | 0x7 | 0x0b => format!("{:02X} ", x), 
-                _ => format!("{:02X}", x),
-            }
+        .map(|(i, &x)| match i {
+            0x3 | 0x7 | 0x0b => format!("{:02X} ", x),
+            _ => format!("{:02X}", x),
         })
         .collect::<Vec<String>>()
         .join(" ");
-    
-    let ascii_body = data.iter()
+
+    let ascii_body = data
+        .iter()
         .map(|&x| {
             let c = x as char;
             if c.is_ascii() && !c.is_control() {
@@ -72,26 +71,26 @@ fn fmt_hexdump_line(line_no: Option<u16>, data:  &[u8]) -> String {
 impl<const S: usize> fmt::Debug for MemoryMap<S> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         let header = fmt_hexdump_line(None, &(0x00..0x10).collect::<Vec<_>>());
-        
+
         let divider = "-".repeat(header.len());
 
-        let body = self.0
+        let body = self
+            .0
             .chunks(16)
             .enumerate()
             .map(|(i, chunk)| fmt_hexdump_line(Some(i as u16 * 16), chunk))
             .collect::<Vec<String>>()
             .join("\n");
-        
+
         write!(f, "{}\n{}\n{}", header, divider, body)
     }
 }
-
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// Deadbeef is a recognisable 32-bit value for testing 
+    /// Deadbeef is a recognisable 32-bit value for testing
     const DEADBEEF: [u8; 4] = [0xDE, 0xAD, 0xBE, 0xEF];
 
     #[test]
@@ -115,7 +114,7 @@ mod tests {
     fn test_u16_le_write_read() {
         let mut mem = MemoryMap::<0x100>::default();
         mem.load(0x00, &DEADBEEF);
-        
+
         // write 4096 at 0x10 in little endian
         let addr = 0x10;
         let val = 4096_u16;
@@ -126,10 +125,10 @@ mod tests {
         assert_eq!(mem.read_u16(addr), val);
         // check byte order
         assert_eq!(mem.read_u8(addr), lo);
-        assert_eq!(mem.read_u8(addr+1), hi);
+        assert_eq!(mem.read_u8(addr + 1), hi);
 
         // read deadbeef as 16-bit words (should be flipped)
         assert_eq!(mem.read_u16(0x00), 0xADDE);
         assert_eq!(mem.read_u16(0x02), 0xEFBE);
-    }   
+    }
 }
