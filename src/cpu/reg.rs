@@ -1,3 +1,4 @@
+#[derive(Debug)]
 pub struct RegisterSet {
     /// Program Counter
     pub pc: u16,
@@ -9,7 +10,7 @@ pub struct RegisterSet {
     pub x: u8,
     /// Index Register Y
     pub y: u8,
-    /// Processor Status Word \[ N V _ B D I Z C \]
+    /// Processor Status Word \[ N V B5 B4 D I Z C \]
     pub p: u8,
 }
 

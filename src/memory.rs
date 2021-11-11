@@ -82,7 +82,7 @@ impl<const S: usize> fmt::Debug for MemoryMap<S> {
             .collect::<Vec<String>>()
             .join("\n");
 
-        write!(f, "{}\n{}\n{}", header, divider, body)
+        write!(f, "\n{}\n{}\n{}", header, divider, body)
     }
 }
 

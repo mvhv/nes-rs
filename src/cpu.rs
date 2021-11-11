@@ -7,6 +7,7 @@ use crate::cpu::ops::Opcode;
 use crate::cpu::reg::RegisterSet;
 use crate::memory::MemoryMap;
 
+use std::collections::HashMap;
 use std::ops::Range;
 
 use self::ops::Mnemonic;
@@ -18,6 +19,12 @@ pub struct CPU {
     reg: RegisterSet,
     /// CPU Memory
     mem: MemoryMap<0xFFFF>,
+}
+
+impl std::fmt::Debug for CPU {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        write!(f, "CPU Dump:\nreg:\n{:#x?}\nmem:\n{:?}", self.reg, self.mem)
+    }
 }
 
 fn twos_add_overflow_carry(value: u8, operand: u8) -> (u8, bool, bool) {
@@ -254,24 +261,24 @@ impl CPU {
     }
 
     fn push_u8(&mut self, value: u8) {
-        self.reg.sp -= 1;
+        self.reg.sp = self.reg.sp.wrapping_add(0xFF);
         self.mem.write_u8(self.get_stack_pointer(), value);
     }
 
     fn push_u16(&mut self, value: u16) {
-        self.reg.sp -= 2;
+        self.reg.sp = self.reg.sp.wrapping_add(0xFE);
         self.mem.write_u16(self.get_stack_pointer(), value);
     }
 
     fn pull_u8(&mut self) -> u8 {
         let value = self.mem.read_u8(self.get_stack_pointer());
-        self.reg.sp += 1;
+        self.reg.sp = self.reg.sp.wrapping_add(0x01);
         value
     }
 
     fn pull_u16(&mut self) -> u16 {
         let value = self.mem.read_u16(self.get_stack_pointer());
-        self.reg.sp += 2;
+        self.reg.sp = self.reg.sp.wrapping_add(0x02);
         value
     }
 
@@ -380,8 +387,8 @@ impl CPU {
 
     fn do_stack_transfer(&mut self, opcode: &Opcode) {
         match &opcode.mnemonic {
-            Mnemonic::TXS => self.reg.x = self.reg.sp,
-            Mnemonic::TSX => self.reg.sp = self.reg.x,
+            Mnemonic::TXS => self.reg.sp = self.reg.x,
+            Mnemonic::TSX => self.reg.x = self.reg.sp,
             Mnemonic::PHA => self.push_u8(self.reg.a),
             Mnemonic::PLA => self.reg.a = self.pull_u8(),
             // PHP pushes the processor word with 4 and 5 set, and PLP ignores them when pulling
@@ -413,6 +420,10 @@ impl CPU {
             reg: RegisterSet::default(),
             mem: MemoryMap::default(),
         }
+    }
+
+    pub fn read(&self, addr: u16) -> u8 {
+        self.mem.read_u8(addr)
     }
 
     pub fn load(&mut self, addr: u16, data: &[u8]) {
@@ -470,7 +481,7 @@ impl CPU {
         self.reg.pc += 1;
         let &opcode = ops::CPU_OPCODES_MAP
             .get(&code)
-            .expect(&format!("ERROR: Opcode {:x} unimplemented", code));
+            .expect(&format!("ERROR: Opcode {:#x?} unimplemented\nDump:\n {:#?}", code, self));
 
         match opcode.mnemonic {
             // Add or Subtract
@@ -520,12 +531,7 @@ impl CPU {
 
     /// Continuously run program from current location until BRK
     pub fn run(&mut self) {
-        loop {
-            match self.mem.read_u8(self.reg.pc) {
-                0x00 => return, // break (temporary manual check until we implement proper interrupts)
-                opcode => self.step(opcode),
-            }
-        }
+        self.run_with_callback(|_|Ok(()));
     }
 
     /// Reset register state and initialise program counter to value at 0xFFFC
@@ -537,6 +543,21 @@ impl CPU {
     pub fn load_program(&mut self, program: &[u8]) {
         self.mem.load(CPU::PRG_ROM_ADDR_MIN, program);
         self.mem.write_u16(0xFFFC, CPU::PRG_ROM_ADDR_MIN);
+    }
+
+
+    pub fn run_with_callback<F>(&mut self, mut callback: F)
+    where F: FnMut(&mut CPU) -> Result<(), Box<dyn std::error::Error>>,
+    {
+        let ref opcodes: HashMap<u8, &'static Opcode> = *ops::CPU_OPCODES_MAP;
+
+        loop {
+            callback(self);
+            match self.mem.read_u8(self.reg.pc) {
+                //0x00 => return, // break (temporary manual check until we implement proper interrupts)
+                opcode => self.step(opcode),
+            }
+        }
     }
 }
 
