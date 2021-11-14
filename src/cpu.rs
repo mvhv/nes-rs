@@ -7,9 +7,6 @@ use crate::cpu::ops::Opcode;
 use crate::cpu::reg::RegisterSet;
 use crate::memory::MemoryMap;
 
-use std::collections::HashMap;
-use std::ops::Range;
-
 use self::ops::Mnemonic;
 
 /// The NES CPU - Ricoh 2A03 (Modified MOS 6502)
@@ -43,16 +40,16 @@ fn twos_add_overflow_carry(value: u8, operand: u8) -> (u8, bool, bool) {
 }
 
 fn is_negative(val: u8) -> bool {
-    (val >> 7) != 0
+    val & 0b1000_0000 != 0
 }
 
 fn is_positive(val: u8) -> bool {
-    (val >> 7) == 0
+    val & 0b1000_0000 == 0
 }
 
-fn sign_bit(val: u8) -> u8 {
-    val >> 7
-}
+// fn sign_bit(val: u8) -> u8 {
+//     val >> 7
+// }
 
 #[allow(unused)]
 impl CPU {
@@ -131,17 +128,18 @@ impl CPU {
         self.increment_pc(opcode);
     }
 
-    fn do_left_shift(&mut self, opcode: &Opcode) {
+    /// Arithmetic shift is always left
+    fn do_arithmetic_shift(&mut self, opcode: &Opcode) {
         match &opcode.mode {
             AddressMode::Accumulator => {
-                self.reg.set_carry(is_negative(self.reg.a));
+                self.reg.set_carry(self.reg.a & 0b1000_0000 != 0);
                 self.reg.a <<= 1;
                 self.update_zn_from_accumulator();
             }
             mode => {
                 let addr = self.get_operand_address(mode);
                 let operand = self.mem.read_u8(addr);
-                self.reg.set_carry(is_negative(operand));
+                self.reg.set_carry(self.reg.a & 0b1000_0000 != 0);
                 let result = operand << 1;
                 self.mem.write_u8(addr, result);
                 self.update_zn_from_value(result);
@@ -150,6 +148,27 @@ impl CPU {
 
         self.increment_pc(opcode);
     }
+
+        /// Logical shift is always right
+        fn do_logical_shift(&mut self, opcode: &Opcode) {
+            match &opcode.mode {
+                AddressMode::Accumulator => {
+                    self.reg.set_carry(self.reg.a & 1 != 0);
+                    self.reg.a >>= 1;
+                    self.update_zn_from_accumulator();
+                }
+                mode => {
+                    let addr = self.get_operand_address(mode);
+                    let operand = self.mem.read_u8(addr);
+                    self.reg.set_carry(self.reg.a & 1 != 0);
+                    let result = operand >> 1;
+                    self.mem.write_u8(addr, result);
+                    self.update_zn_from_value(result);
+                }
+            }
+    
+            self.increment_pc(opcode);
+        }
 
     fn do_bit_test(&mut self, opcode: &Opcode) {
         let operand = self.get_operand_u8(opcode);
@@ -161,7 +180,7 @@ impl CPU {
     }
 
     fn do_branch(&mut self, opcode: &Opcode) {
-        let branch_address = self.get_operand_address(&opcode.mode);
+        let relative_offset = self.get_operand_u8(opcode);
 
         if match &opcode.mnemonic {
             Mnemonic::BPL => !self.reg.get_negative(),
@@ -174,10 +193,11 @@ impl CPU {
             Mnemonic::BEQ => self.reg.get_zero(),
             x => panic!("ERROR: Branch not a valid instruction for: {:?}", x),
         } {
-            self.reg.pc = branch_address;
-        } else {
-            self.increment_pc(opcode);
+            self.reg.pc = self.reg.pc.wrapping_add(relative_offset as u16);
         }
+        // the relative offsets is from the end of the op
+        // so we increment the pc as normal regardless
+        self.increment_pc(opcode);
     }
 
     fn do_break(&mut self, _opcode: &Opcode) {
@@ -210,8 +230,8 @@ impl CPU {
         let value = self.mem.read_u8(addr);
 
         let result = match &opcode.mnemonic {
-            Mnemonic::DEC => value.wrapping_add(0x01),
-            Mnemonic::INC => value.wrapping_add(0xFF),
+            Mnemonic::DEC => value.wrapping_add(1),
+            Mnemonic::INC => value.wrapping_sub(1),
             x => panic!(
                 "ERROR: Increment/Decrement not a valid instruction for: {:?}",
                 x
@@ -252,41 +272,56 @@ impl CPU {
     }
 
     fn do_jump(&mut self, opcode: &Opcode) {
-        let operand = self.get_operand_u16(opcode);
-        self.reg.pc = operand;
-    }
-
-    fn get_stack_pointer(&self) -> u16 {
-        CPU::STACK_ADDR_MIN + self.reg.sp as u16
-    }
-
-    fn push_u8(&mut self, value: u8) {
-        self.reg.sp = self.reg.sp.wrapping_add(0xFF);
-        self.mem.write_u8(self.get_stack_pointer(), value);
-    }
-
-    fn push_u16(&mut self, value: u16) {
-        self.reg.sp = self.reg.sp.wrapping_add(0xFE);
-        self.mem.write_u16(self.get_stack_pointer(), value);
-    }
-
-    fn pull_u8(&mut self) -> u8 {
-        let value = self.mem.read_u8(self.get_stack_pointer());
-        self.reg.sp = self.reg.sp.wrapping_add(0x01);
-        value
-    }
-
-    fn pull_u16(&mut self) -> u16 {
-        let value = self.mem.read_u16(self.get_stack_pointer());
-        self.reg.sp = self.reg.sp.wrapping_add(0x02);
-        value
+        // jumps are absolute addressed, but the operand is the target, not the contents
+        let destination = self.get_operand_address(&opcode.mode);
+        self.reg.pc = destination;
     }
 
     fn do_subroutine_jump(&mut self, opcode: &Opcode) {
-        let operand = self.get_operand_u16(opcode);
+        // jumps are absolute addressed, but the operand is the target, not the contents
+        let destination = self.get_operand_address(&opcode.mode);
         self.increment_pc(opcode);
         self.push_u16(self.reg.pc - 1);
-        self.reg.pc = operand;
+        self.reg.pc = destination;
+    }
+
+    /// Returns the next (free) address on the stack
+    fn get_sp(&self) -> u16 {
+        CPU::STACK_ADDR_MIN + self.reg.sp as u16
+    }
+    
+    fn increment_sp(&mut self) {
+        self.reg.sp = self.reg.sp.wrapping_add(1);
+    }
+    
+    fn decrement_sp(&mut self) {
+        self.reg.sp = self.reg.sp.wrapping_sub(1);
+    }
+    
+    fn push_u8(&mut self, value: u8) {
+        self.mem.write_u8(self.get_sp(), value);
+        self.decrement_sp();
+    }
+
+    fn push_u16(&mut self, value: u16) {
+        // TODO: Ensure that u16 values are written correctly in stack wrapping conditions
+        let [lo, hi] = value.to_le_bytes();
+        // most significant byte is pushed first
+        self.push_u8(hi);
+        self.push_u8(lo);
+    }
+
+    fn pull_u8(&mut self) -> u8 {
+        self.increment_sp();
+        self.mem.read_u8(self.get_sp())
+    }
+
+    fn pull_u16(&mut self) -> u16 {
+        // TODO: Ensure that u16 values are read correctly in stack wrapping condition
+        // least significant byte loaded first
+        let lo = self.pull_u8();
+        let hi = self.pull_u8();
+        u16::from_le_bytes([lo, hi])
     }
 
     fn do_load(&mut self, opcode: &Opcode) {
@@ -347,7 +382,7 @@ impl CPU {
     }
 
     fn do_rotate_left(&mut self, opcode: &Opcode) {
-        let new_carry = is_negative(self.reg.a);
+        let new_carry = self.reg.a & 0b1000_0000 != 0;
 
         self.reg.a = if self.reg.get_carry() {
             self.reg.a | 0b1000_0000
@@ -362,7 +397,7 @@ impl CPU {
     }
 
     fn do_rotate_right(&mut self, opcode: &Opcode) {
-        let new_carry = (self.reg.a & 0b0000_0001 != 0);
+        let new_carry = self.reg.a & 0b0000_0001 != 0;
 
         self.reg.a = if self.reg.get_carry() {
             self.reg.a | 0b0000_0001
@@ -434,12 +469,12 @@ impl CPU {
         use AddressMode::*;
         match mode {
             Implicit => panic!("AddressMode Error: No operand for Implicit addressing."),
-            Accumulator => self.reg.a as u16, // may need to replace this
+            Accumulator => panic!("AddressMode Error: No operand for Accumulator addressing."), // may need to replace this
             Immediate => self.reg.pc,
             ZeroPage => self.mem.read_u8(self.reg.pc) as u16,
             ZeroPageX => self.mem.read_u8(self.reg.pc).wrapping_add(self.reg.x) as u16,
             ZeroPageY => self.mem.read_u8(self.reg.pc).wrapping_add(self.reg.y) as u16,
-            Relative => self.mem.read_u8(self.reg.pc) as u16 + self.reg.pc, // for branch instructions, there is no operand really.
+            Relative => self.reg.pc, // for branch instructions, there is no operand really.
             Absolute => self.mem.read_u16(self.reg.pc), // may also need to replace this
             AbsoluteX => self
                 .mem
@@ -489,7 +524,7 @@ impl CPU {
             // Bitwise AND with accumulator
             AND => self.do_and(opcode),
             // Arithmetic shift left
-            ASL => self.do_left_shift(opcode),
+            ASL => self.do_arithmetic_shift(opcode),
             // Test bits
             BIT => self.do_bit_test(opcode),
             // Branch instructions
@@ -508,7 +543,7 @@ impl CPU {
             // Load register
             LDA | LDX | LDY => self.do_load(opcode),
             // Logical shift right
-            LSR => self.do_left_shift(opcode),
+            LSR => self.do_logical_shift(opcode),
             // No operation
             NOP => self.do_nop(opcode),
             // Bitwise OR with accumulator
@@ -549,10 +584,12 @@ impl CPU {
     pub fn run_with_callback<F>(&mut self, mut callback: F)
     where F: FnMut(&mut CPU) -> Result<(), Box<dyn std::error::Error>>,
     {
-        let ref opcodes: HashMap<u8, &'static Opcode> = *ops::CPU_OPCODES_MAP;
+        //let ref opcodes: HashMap<u8, &'static Opcode> = *ops::CPU_OPCODES_MAP;
 
         loop {
-            callback(self);
+            if let Err(error) = callback(self) {
+                panic!("ERROR in UI Callback: {:?}", error);
+            }
             match self.mem.read_u8(self.reg.pc) {
                 //0x00 => return, // break (temporary manual check until we implement proper interrupts)
                 opcode => self.step(opcode),
@@ -724,4 +761,96 @@ mod tests {
         cpu.run();
         assert_eq!(cpu.reg.get_overflow(), true);
     }
+
+    #[test]
+    fn test_update_zn() {
+        let mut cpu = CPU::new();
+        cpu.interrupt_reset();
+        cpu.reg.a = 0;
+        cpu.update_zn_from_accumulator();
+        assert_eq!(cpu.reg.get_zero(), true);
+        assert_eq!(cpu.reg.get_negative(), false);
+
+        cpu.interrupt_reset();
+        cpu.reg.a = -1_i8 as u8;
+        cpu.update_zn_from_accumulator();
+        assert_eq!(cpu.reg.get_zero(), false);
+        assert_eq!(cpu.reg.get_negative(), true);
+    
+        cpu.interrupt_reset();
+        cpu.reg.a = 1;
+        cpu.update_zn_from_accumulator();
+        assert_eq!(cpu.reg.get_zero(), false);
+        assert_eq!(cpu.reg.get_negative(), false);
+
+        cpu.interrupt_reset();
+        cpu.update_zn_from_value(0);
+        assert_eq!(cpu.reg.get_zero(), true);
+        assert_eq!(cpu.reg.get_negative(), false);
+
+        cpu.interrupt_reset();
+        cpu.update_zn_from_value(-1_i8 as u8);
+        assert_eq!(cpu.reg.get_zero(), false);
+        assert_eq!(cpu.reg.get_negative(), true);
+    
+        cpu.interrupt_reset();
+        cpu.update_zn_from_value(1);
+        assert_eq!(cpu.reg.get_zero(), false);
+        assert_eq!(cpu.reg.get_negative(), false);
+    }
+
+    #[test]
+    fn test_get_address() {
+        let mut cpu = CPU::new();
+        let address = 0x1F1F;
+        cpu.load(address, &[0x10, 0x20]);
+        // little endian so 0x1F1F should represent 0x10 as a u8 and 0x2010 as a u16
+        assert_eq!(cpu.mem.read_u8(address), 0x10u8);
+        assert_eq!(cpu.mem.read_u16(address), 0x2010u16);
+    }
+
+    #[test]
+    fn test_arithmetic_shift() {
+        let mut cpu = CPU::new();
+        let pre_shifted_value = 0b1001_0100;
+        let expected_value = 0b0010_1000;
+        cpu.load_program(&[0xA9, pre_shifted_value, 0x0A, 0x00]);
+        cpu.interrupt_reset();
+        cpu.run();
+        assert_eq!(cpu.reg.a, expected_value);
+        assert_eq!(cpu.reg.get_carry(), true);
+
+        let mut cpu = CPU::new();
+        let pre_shifted_value = 0b0011_0111;
+        let expected_value = 0b0110_1110;
+        cpu.load_program(&[0xA9, pre_shifted_value, 0x0A, 0x00]);
+        cpu.interrupt_reset();
+        cpu.run();
+        assert_eq!(cpu.reg.a, expected_value);
+        assert_eq!(cpu.reg.get_carry(), false);
+    }
+
+    #[test]
+    fn test_logical_shift() {
+        let mut cpu = CPU::new();
+        let pre_shifted_value = 0b1001_0100;
+        let expected_value = 0b0100_1010;
+        cpu.load_program(&[0xA9, pre_shifted_value, 0x4A, 0x00]);
+        cpu.interrupt_reset();
+        cpu.run();
+        assert_eq!(cpu.reg.a, expected_value);
+        assert_eq!(cpu.reg.get_carry(), false);
+
+        let mut cpu = CPU::new();
+        let pre_shifted_value = 0b0011_0111;
+        let expected_value = 0b0001_1011;
+        cpu.load_program(&[0xA9, pre_shifted_value, 0x4A, 0x00]);
+        cpu.interrupt_reset();
+        cpu.run();
+        assert_eq!(cpu.reg.a, expected_value);
+        assert_eq!(cpu.reg.get_carry(), true);
+    }
+
+    // #[test]
+    // fn test_
 }

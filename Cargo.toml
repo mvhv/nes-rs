@@ -9,3 +9,5 @@ edition = "2021"
 lazy_static = "*"
 sdl2 = "*"
 rand = "*"
+tui = {version = "*", features = ["crossterm"], default-features = false }
+crossterm = "*"
