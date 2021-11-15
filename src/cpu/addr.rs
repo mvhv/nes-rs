@@ -13,5 +13,4 @@ pub enum AddressMode {
     Indirect,
     IndirectX, // Indexed Indirect
     IndirectY, // Indirect Indexed
-    NoAddressing,
 }

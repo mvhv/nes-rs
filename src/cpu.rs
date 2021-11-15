@@ -1,11 +1,12 @@
 mod addr;
 mod ops;
 mod reg;
+mod decomp;
 
 use crate::cpu::addr::AddressMode;
 use crate::cpu::ops::Opcode;
 use crate::cpu::reg::RegisterSet;
-use crate::memory::MemoryMap;
+use crate::memory::{SimpleMap, MemoryMap};
 
 use self::ops::Mnemonic;
 
@@ -15,7 +16,7 @@ pub struct CPU {
     /// CPU Register Set
     reg: RegisterSet,
     /// CPU Memory
-    mem: MemoryMap<0xFFFF>,
+    mem: SimpleMap<0xFFFF>,
 }
 
 impl std::fmt::Debug for CPU {
@@ -83,9 +84,10 @@ impl CPU {
         self.mem.read_u8(self.get_operand_address(&opcode.mode))
     }
 
-    fn get_operand_u16(&mut self, opcode: &Opcode) -> u16 {
-        self.mem.read_u16(self.get_operand_address(&opcode.mode))
-    }
+    // there is never a u16 operand, any apparent u16 operand is actually an address
+    // fn get_operand_u16(&mut self, opcode: &Opcode) -> u16 {
+    //     self.mem.read_u16(self.get_operand_address(&opcode.mode))
+    // }
 
     fn increment_pc(&mut self, opcode: &Opcode) {
         self.reg.pc += opcode.bytes - 1;
@@ -453,7 +455,7 @@ impl CPU {
     pub fn new() -> Self {
         CPU {
             reg: RegisterSet::default(),
-            mem: MemoryMap::default(),
+            mem: SimpleMap::default(),
         }
     }
 
@@ -488,7 +490,7 @@ impl CPU {
                 let ptr = self.mem.read_u16(self.reg.pc);
 
                 self.mem.read_u16(ptr)
-            }
+            },
             IndirectX => {
                 let ptr = self.mem.read_u8(self.reg.pc).wrapping_add(self.reg.x);
 
@@ -496,7 +498,7 @@ impl CPU {
                     self.mem.read_u8(ptr as u16),
                     self.mem.read_u8(ptr.wrapping_add(1) as u16),
                 ])
-            }
+            },
             IndirectY => {
                 let ptr = self.mem.read_u8(self.reg.pc);
 
@@ -506,7 +508,6 @@ impl CPU {
                 ])
                 .wrapping_add(self.reg.y as u16)
             }
-            NoAddressing => panic!("AddressMode Error: NoAddressing is not implemented."),
         }
     }
 
@@ -591,7 +592,7 @@ impl CPU {
                 panic!("ERROR in UI Callback: {:?}", error);
             }
             match self.mem.read_u8(self.reg.pc) {
-                //0x00 => return, // break (temporary manual check until we implement proper interrupts)
+                0x00 => return, // break (temporary manual check until we implement proper interrupts)
                 opcode => self.step(opcode),
             }
         }
