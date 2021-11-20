@@ -1,7 +1,7 @@
 mod addr;
 mod ops;
 mod reg;
-mod decomp;
+pub mod prog;
 
 use crate::cpu::addr::AddressMode;
 use crate::cpu::ops::Opcode;
@@ -222,7 +222,7 @@ impl CPU {
         };
 
         self.reg.set_carry(base_value > operand);
-        self.update_zn_from_value(base_value - operand);
+        self.update_zn_from_value(base_value.wrapping_sub(operand));
 
         self.increment_pc(opcode);
     }
@@ -515,7 +515,7 @@ impl CPU {
         use ops::Mnemonic::*;
 
         self.reg.pc += 1;
-        let &opcode = ops::CPU_OPCODES_MAP
+        let &opcode = ops::CPU_OPCODE_MAP
             .get(&code)
             .expect(&format!("ERROR: Opcode {:#x?} unimplemented\nDump:\n {:#?}", code, self));
 
@@ -576,16 +576,21 @@ impl CPU {
         self.reg.pc = self.mem.read_u16(CPU::PRG_START_ADDR);
     }
 
+    /// Loads program into PRG_ROM and sets the reset address
     pub fn load_program(&mut self, program: &[u8]) {
         self.mem.load(CPU::PRG_ROM_ADDR_MIN, program);
         self.mem.write_u16(0xFFFC, CPU::PRG_ROM_ADDR_MIN);
     }
 
+    /// Loads program at 0x0600 and sets reset address (fudge code for snake testing)
+    pub fn load_for_snake(&mut self, program: &[u8]) {
+        self.mem.load(0x0600, program);
+        self.mem.write_u16(0xFFFC, 0x0600);
+    }
 
     pub fn run_with_callback<F>(&mut self, mut callback: F)
     where F: FnMut(&mut CPU) -> Result<(), Box<dyn std::error::Error>>,
     {
-        //let ref opcodes: HashMap<u8, &'static Opcode> = *ops::CPU_OPCODES_MAP;
 
         loop {
             if let Err(error) = callback(self) {

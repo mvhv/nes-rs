@@ -1,9 +1,13 @@
-// use nom::{IResult, digit, types::CompleteStr};
-
-use std::error::Error;
-
-use crate::cpu::ops::{Mnemonic, Opcode, CPU_OPCODES_MAP};
+use crate::cpu::ops::{Mnemonic, Opcode, CPU_OPCODE_MAP};
 use crate::cpu::addr::AddressMode;
+
+
+#[derive(Debug)]
+pub enum Operand {
+    None,
+    Word(u8),
+    DoubleWord(u16),
+}
 
 #[derive(Debug)]
 pub struct Instruction {
@@ -17,7 +21,7 @@ impl Instruction {
         I: Iterator<Item = &'a u8>
     {
         if let Some(byte) = program.next() {
-            let opcode = CPU_OPCODES_MAP.get(&byte).expect("Error, opcode not found in map while decompiling.").clone();
+            let opcode = CPU_OPCODE_MAP.get(&byte).expect("Error, opcode not found in map while decompiling.").clone();
             
             let operand = match opcode.mode {
                 AddressMode::Implicit |
@@ -44,7 +48,7 @@ impl Instruction {
 
 impl std::fmt::Display for Instruction {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
-        let mnem = self.opcode.mnemonic.as_string();
+        let mnem = self.opcode.mnemonic.to_string();
         let oper = match (&self.opcode.mode, &self.operand) {
             (AddressMode::Implicit, Operand::None) => None,
             (AddressMode::Accumulator, Operand::None) => Some("A".into()), // may need to replace this
@@ -66,47 +70,5 @@ impl std::fmt::Display for Instruction {
         } else {
             write!(f, "{}", mnem)
         }
-    }
-}
-
-#[derive(Debug)]
-pub enum Operand {
-    None,
-    Word(u8),
-    DoubleWord(u16),
-}
-
-pub fn decompile_to_string(program: &[u8]) -> Result<String, Box<dyn Error>> {
-    Ok(
-        decompile_to_instructions(program)?
-            .iter()
-            .map(|inst| format!("{}", inst))
-            .collect::<Vec<String>>()
-            .join("\n")
-    )
-}
-
-pub fn decompile_to_instructions(program: &[u8]) -> Result<Vec<Instruction>, Box<dyn Error>> {
-    let mut instructions = Vec::new();
-    let mut cursor = program.iter();
-
-    while let Some(instruction) = Instruction::from_iter(&mut cursor) {
-        instructions.push(instruction);
-    }
-
-    Ok(instructions)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_print_decompilation() {
-        // LDA #23
-        // BRK
-        let program = &[0xA9, 0x23, 0x00];
-        let decomp = decompile_to_string(program).expect("Failed to unwrap in test_print_decompilation.");
-        assert_eq!(decomp, "LDA #23\nBRK");
     }
 }

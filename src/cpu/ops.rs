@@ -3,44 +3,57 @@ use std::collections::HashMap;
 
 use crate::cpu::addr::AddressMode::{self, *};
 
-#[derive(Debug)]
+#[derive(Debug, Hash, PartialEq, Eq, Clone, Copy)]
 pub enum Mnemonic {
-    /// Add with carry
+    /// Add with carry.
     ADC,
-    /// Bitwise AND with accumulator
+    /// Bitwise and with accumulator.
     AND,
-    /// Arithmetic shift left
+    /// Arithmetic shift left.
     ASL,
-    /// Test bits
+    /// Test bits.
     BIT,
-    /// Branch instructions
+    /// Branch on plus.
     BPL,
+    /// Branch on minus.
     BMI,
+    /// Branch on overflow clear.
     BVC,
+    /// Branch on overflow set.
     BVS,
+    /// Branch on carry clear.
     BCC,
+    /// Branch on carry set.
     BCS,
+    /// Branch on not equal.
     BNE,
+    /// Branch on equal.
     BEQ,
-    /// Break
+    /// Break.
     BRK,
-    /// Compare accumulator
+    /// Compare accumulator.
     CMP,
-    /// Compare X register
+    /// Compare X register.
     CPX,
-    /// Compare Y register
+    /// Compare Y register.
     CPY,
-    /// Decrement memory
+    /// Decrement memory.
     DEC,
-    /// Bitwise exclusive OR
+    /// Bitwise exclusive or.
     EOR,
-    /// Flag (processor status) instructions
+    /// Clear carry.
     CLC,
+    /// Set carry.
     SEC,
+    /// Clear interrupt
     CLI,
+    /// Set interrupt.
     SEI,
+    /// Clear overflow.
     CLV,
+    /// Clear decimal.
     CLD,
+    /// Set decimal
     SED,
     /// Increment memory
     INC,
@@ -60,14 +73,21 @@ pub enum Mnemonic {
     NOP,
     /// Bitwise OR with accumulator
     ORA,
-    /// Register instructions
+    /// Transfer accumulator to x
     TAX,
+    /// Transfer x to accumulator
     TXA,
+    /// Decrement x
     DEX,
+    /// Increment x
     INX,
+    /// Transfer accumulator to y
     TAY,
+    /// Transfer y to accumulator
     TYA,
+    /// Decrement y
     DEY,
+    /// Increment y
     INY,
     /// Rotate left
     ROL,
@@ -81,12 +101,17 @@ pub enum Mnemonic {
     SBC,
     /// Store accumulator
     STA,
-    /// Stack instructions
+    /// Transfer x to stack pointer
     TXS,
+    /// Transfer stack pointer to x
     TSX,
+    /// Push stack from accumulator
     PHA,
+    /// Pull (pop) stack to accumulator
     PLA,
+    /// Push stack from processor status word
     PHP,
+    /// Pull (pop) stack to process status word
     PLP,
     /// Store X register
     STX,
@@ -94,65 +119,133 @@ pub enum Mnemonic {
     STY,
 }
 
-impl Mnemonic {
-    pub fn as_string(&self) -> &'static str {
-        match self {
-            ADC => "ADC",
-            AND => "AND",
-            ASL => "ASL",
-            BIT => "BIT",
-            BPL => "BPL",
-            BMI => "BMI",
-            BVC => "BVC",
-            BVS => "BVS",
-            BCC => "BCC",
-            BCS => "BCS",
-            BNE => "BNE",
-            BEQ => "BEQ",
-            BRK => "BRK",
-            CMP => "CMP",
-            CPX => "CPX",
-            CPY => "CPY",
-            DEC => "DEC",
-            EOR => "EOR",
-            CLC => "CLC",
-            SEC => "SEC",
-            CLI => "CLI",
-            SEI => "SEI",
-            CLV => "CLV",
-            CLD => "CLD",
-            SED => "SED",
-            INC => "INC",
-            JMP => "JMP",
-            JSR => "JSR",
-            LDA => "LDA",
-            LDX => "LDX",
-            LDY => "LDY",
-            LSR => "LSR",
-            NOP => "NOP",
-            ORA => "ORA",
-            TAX => "TAX",
-            TXA => "TXA",
-            DEX => "DEX",
-            INX => "INX",
-            TAY => "TAY",
-            TYA => "TYA",
-            DEY => "DEY",
-            INY => "INY",
-            ROL => "ROL",
-            ROR => "ROR",
-            RTI => "RTI",
-            RTS => "RTS",
-            SBC => "SBC",
-            STA => "STA",
-            TXS => "TXS",
-            TSX => "TSX",
-            PHA => "PHA",
-            PLA => "PLA",
-            PHP => "PHP",
-            PLP => "PLP",
-            STX => "STX",
-            STY => "STY",
+impl std::fmt::Display for Mnemonic {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        write!(f, "{}",
+            match self {
+                ADC => "ADC",
+                AND => "AND",
+                ASL => "ASL",
+                BIT => "BIT",
+                BPL => "BPL",
+                BMI => "BMI",
+                BVC => "BVC",
+                BVS => "BVS",
+                BCC => "BCC",
+                BCS => "BCS",
+                BNE => "BNE",
+                BEQ => "BEQ",
+                BRK => "BRK",
+                CMP => "CMP",
+                CPX => "CPX",
+                CPY => "CPY",
+                DEC => "DEC",
+                EOR => "EOR",
+                CLC => "CLC",
+                SEC => "SEC",
+                CLI => "CLI",
+                SEI => "SEI",
+                CLV => "CLV",
+                CLD => "CLD",
+                SED => "SED",
+                INC => "INC",
+                JMP => "JMP",
+                JSR => "JSR",
+                LDA => "LDA",
+                LDX => "LDX",
+                LDY => "LDY",
+                LSR => "LSR",
+                NOP => "NOP",
+                ORA => "ORA",
+                TAX => "TAX",
+                TXA => "TXA",
+                DEX => "DEX",
+                INX => "INX",
+                TAY => "TAY",
+                TYA => "TYA",
+                DEY => "DEY",
+                INY => "INY",
+                ROL => "ROL",
+                ROR => "ROR",
+                RTI => "RTI",
+                RTS => "RTS",
+                SBC => "SBC",
+                STA => "STA",
+                TXS => "TXS",
+                TSX => "TSX",
+                PHA => "PHA",
+                PLA => "PLA",
+                PHP => "PHP",
+                PLP => "PLP",
+                STX => "STX",
+                STY => "STY",
+            }
+        )
+    }
+}
+
+impl TryFrom<&str> for Mnemonic {
+    type Error = Box<dyn std::error::Error>;
+
+    fn try_from(s: &str) -> Result<Self, Self::Error>{
+        match s {
+            "ADC" => Ok(ADC),
+            "AND" => Ok(AND),
+            "ASL" => Ok(ASL),
+            "BIT" => Ok(BIT),
+            "BPL" => Ok(BPL),
+            "BMI" => Ok(BMI),
+            "BVC" => Ok(BVC),
+            "BVS" => Ok(BVS),
+            "BCC" => Ok(BCC),
+            "BCS" => Ok(BCS),
+            "BNE" => Ok(BNE),
+            "BEQ" => Ok(BEQ),
+            "BRK" => Ok(BRK),
+            "CMP" => Ok(CMP),
+            "CPX" => Ok(CPX),
+            "CPY" => Ok(CPY),
+            "DEC" => Ok(DEC),
+            "EOR" => Ok(EOR),
+            "CLC" => Ok(CLC),
+            "SEC" => Ok(SEC),
+            "CLI" => Ok(CLI),
+            "SEI" => Ok(SEI),
+            "CLV" => Ok(CLV),
+            "CLD" => Ok(CLD),
+            "SED" => Ok(SED),
+            "INC" => Ok(INC),
+            "JMP" => Ok(JMP),
+            "JSR" => Ok(JSR),
+            "LDA" => Ok(LDA),
+            "LDX" => Ok(LDX),
+            "LDY" => Ok(LDY),
+            "LSR" => Ok(LSR),
+            "NOP" => Ok(NOP),
+            "ORA" => Ok(ORA),
+            "TAX" => Ok(TAX),
+            "TXA" => Ok(TXA),
+            "DEX" => Ok(DEX),
+            "INX" => Ok(INX),
+            "TAY" => Ok(TAY),
+            "TYA" => Ok(TYA),
+            "DEY" => Ok(DEY),
+            "INY" => Ok(INY),
+            "ROL" => Ok(ROL),
+            "ROR" => Ok(ROR),
+            "RTI" => Ok(RTI),
+            "RTS" => Ok(RTS),
+            "SBC" => Ok(SBC),
+            "STA" => Ok(STA),
+            "TXS" => Ok(TXS),
+            "TSX" => Ok(TSX),
+            "PHA" => Ok(PHA),
+            "PLA" => Ok(PLA),
+            "PHP" => Ok(PHP),
+            "PLP" => Ok(PLP),
+            "STX" => Ok(STX),
+            "STY" => Ok(STY),
+            x => Err(format!("Mnemonic: {:?} is not valid", x).into())
         }
     }
 }
@@ -205,6 +298,10 @@ impl Opcode {
 //         )
 //     }
 // }
+
+#[derive(Hash, PartialEq, Eq)]
+pub struct MnemModePair(Mnemonic, AddressMode);
+
 use Mnemonic::*;
 
 lazy_static! {
@@ -470,9 +567,15 @@ lazy_static! {
         Opcode::new(STY, 0x8C, 3, 4, 0, Absolute),
     ];
 
-    pub static ref CPU_OPCODES_MAP: HashMap<u8, &'static Opcode> =
+    pub static ref CPU_OPCODE_MAP: HashMap<u8, &'static Opcode> =
         NMOS_6502_OPCODES.iter()
             .map(|op| (op.code, op))
+            .collect();
+
+
+    pub static ref CPU_MNEMMODE_MAP: HashMap<MnemModePair, &'static Opcode> =
+        NMOS_6502_OPCODES.iter()
+            .map(|op| (MnemModePair(op.mnemonic, op.mode), op))
             .collect();
 }
 

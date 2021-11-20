@@ -1,4 +1,4 @@
-use nes_rs::{prog, CPU};
+use nes_rs::{cpu::prog, CPU};
 
 use sdl2::event::Event;
 use sdl2::EventPump;
@@ -40,8 +40,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             )?;
 
     let mut cpu = CPU::new();
-    cpu.load_program(
-        prog::SNAKE
+    cpu.load_for_snake(
+        prog::SNAKE_BYTES
     );
     cpu.interrupt_reset();
 
