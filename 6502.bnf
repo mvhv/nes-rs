@@ -45,15 +45,16 @@
 <accumulator> ::= "A"
 <immediate> ::= "#" <byte>
 <zeropage> ::= "$" <byte>
-<zeropage-x> ::= "$" <byte> ",X"
-<zeropage-y> ::= "$" <byte> ",Y"
+<zeropage-x> ::= <zeropage> ",X"
+<zeropage-y> ::= <zeropage> ",Y"
 <relative> ::= "*" <signed-decimal-byte>
-<absolute> ::= "$" <double-byte>
-<absolute-x> ::= "$" <double-byte> ",X"
-<absolute-y> ::= "$" <double-byte> ",Y"
-<indirect> ::= "($" <byte> ")"
-<indirect-x> ::= "($" <byte> ",X)"
-<indirect-x> ::= "($" <byte> "),Y"
+<absolute> ::= " $" <double-byte>
+<absolute-x> ::= <absolute> ",X"
+<absolute-y> ::= <absolute> ",Y"
+<indirect> ::= "(" <zeropage> ")"
+<indirect-x> ::= "(" <zeropage> ",X)"
+<indirect-x> ::= "(" <zeropage> "),Y"
+
 
 <comment> ::= ";" <opt-text>
 <opt-comment> ::= "" | <comment>

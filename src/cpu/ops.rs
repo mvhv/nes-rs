@@ -1,5 +1,5 @@
 use lazy_static::lazy_static;
-use std::collections::HashMap;
+use std::{collections::HashMap, str::FromStr};
 
 use crate::cpu::addr::AddressMode::{self, *};
 
@@ -184,10 +184,10 @@ impl std::fmt::Display for Mnemonic {
     }
 }
 
-impl TryFrom<&str> for Mnemonic {
-    type Error = Box<dyn std::error::Error>;
+impl FromStr for Mnemonic {
+    type Err = String; //Box<dyn std::error::Error>;
 
-    fn try_from(s: &str) -> Result<Self, Self::Error>{
+    fn from_str(s: &str) -> Result<Self, Self::Err>{
         match s {
             "ADC" => Ok(ADC),
             "AND" => Ok(AND),

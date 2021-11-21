@@ -1,4 +1,5 @@
 mod instructions;
+mod parse;
 
 use std::{fmt::Display, str::FromStr};
 
