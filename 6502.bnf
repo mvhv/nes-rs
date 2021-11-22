@@ -53,7 +53,7 @@
 <absolute-y> ::= <absolute> ",Y"
 <indirect> ::= "(" <zeropage> ")"
 <indirect-x> ::= "(" <zeropage> ",X)"
-<indirect-x> ::= "(" <zeropage> "),Y"
+<indirect-y> ::= "(" <zeropage> "),Y"
 
 
 <comment> ::= ";" <opt-text>

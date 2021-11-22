@@ -250,7 +250,7 @@ impl FromStr for Mnemonic {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Opcode {
     pub mnemonic: Mnemonic,
     pub code: u8,
@@ -277,6 +277,10 @@ impl Opcode {
             page_fault_penalty,
             mode,
         }
+    }
+
+    pub fn from_mnemonic_mode(mnemonic: Mnemonic, mode: AddressMode) -> &'static Self {
+        *CPU_MNEMMODE_MAP.get(&MnemModePair(mnemonic, mode)).unwrap()
     }
 }
 

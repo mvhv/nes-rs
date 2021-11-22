@@ -1,15 +1,17 @@
+use std::ops::Add;
+
 use crate::cpu::ops::{Mnemonic, Opcode, CPU_OPCODE_MAP};
 use crate::cpu::addr::AddressMode;
 
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Operand {
     None,
     Word(u8),
     DoubleWord(u16),
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Instruction {
     opcode: &'static Opcode,
     operand: Operand,
@@ -42,6 +44,13 @@ impl Instruction {
             Option::Some(Instruction { opcode, operand })
         } else {
             Option::None
+        }
+    }
+
+    pub fn new(mnemonic: Mnemonic, operand: Operand, mode: AddressMode) -> Self {
+        Instruction {
+            opcode: Opcode::from_mnemonic_mode(mnemonic, mode),
+            operand: operand,
         }
     }
 }

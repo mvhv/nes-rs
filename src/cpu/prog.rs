@@ -24,7 +24,7 @@ impl Program {
 impl FromStr for Program {
     type Err = Box<dyn std::error::Error>;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
+    fn from_str(_s: &str) -> Result<Self, Self::Err> {
         Ok(Program::new())
     }
 }
@@ -54,9 +54,9 @@ impl Display for Program {
     }
 }
 
-pub fn assemble(program: &str) -> Result<Program, Box<dyn std::error::Error>> {
-    Ok(Program::new())
-}
+// pub fn assemble(program: &str) -> Result<Program, Box<dyn std::error::Error>> {
+//     Ok(Program::new())
+// }
 
 // pub fn decompile_to_string(program: &[u8]) -> Result<String, Box<dyn Error>> {
 //     Ok(
